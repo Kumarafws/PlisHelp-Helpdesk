@@ -1,31 +1,590 @@
-'use client'
+'use client';
 
-import { useEffect, useMemo, useState } from 'react'
-import { Activity, Bell, CheckCircle2, ChevronRight, CircleHelp, Clock3, FileText, Filter, LayoutDashboard, LifeBuoy, LogOut, MoreHorizontal, Plus, Search, ShieldCheck, Ticket as TicketIcon, UserRound, Users, X, Zap } from 'lucide-react'
+import React, { useState, useMemo } from 'react';
+import {
+  Ticket,
+  TicketRating,
+  TicketStatus,
+  NotificationItem,
+  UserProfile,
+  TicketRole,
+} from '@/types/helpdesk';
+import {
+  CURRENT_EMPLOYEE,
+  INITIAL_TICKETS,
+  INITIAL_NOTIFICATIONS,
+  computeSummary,
+  generateTicketNumber,
+} from '@/services/mockTicketService';
+import { EmployeeLayout } from '@/components/employee/EmployeeLayout';
+import { EmployeeDashboard } from '@/components/employee/Dashboard/EmployeeDashboard';
+import { MyTicketsView } from '@/components/employee/MyTickets/MyTicketsView';
+import { CreateTicketModal } from '@/components/employee/CreateTicket/CreateTicketModal';
+import { TicketDetailView } from '@/components/employee/TicketDetail/TicketDetailView';
+import { ProfileView } from '@/components/employee/Profile/ProfileView';
+import { SupportDashboard } from '@/components/support/SupportDashboard';
+import { AdminDashboard } from '@/components/admin/AdminDashboard';
+import { ToastContainer, ToastMessage } from '@/components/employee/Toast';
+import {
+  LifeBuoy,
+  UserRound,
+  ChevronRight,
+  ShieldCheck,
+  Headphones,
+  Sparkles,
+  Lock,
+  Mail,
+  AlertCircle,
+} from 'lucide-react';
 
-type Role = 'Employee' | 'IT Support' | 'Admin'
-type Status = 'Open' | 'In Progress' | 'Need Info' | 'Escalated' | 'Resolved' | 'Closed' | 'Reopened'
-type Priority = 'High' | 'Medium' | 'Low'
-type TicketType = 'Incident' | 'Service Request'
-type Ticket = { id:string; title:string; category:string; subcategory:string; type:TicketType; status:Status; priority:Priority; date:string; assignee:string; requester:string; department:string; sla:string; description:string; comments:string[]; internalNotes:string[]; rating?:number }
+const DEMO_ACCOUNTS: Record<
+  TicketRole,
+  { email: string; password: string; name: string; department: string; description: string }
+> = {
+  Employee: {
+    email: 'andi@plishelp.co.id',
+    password: 'employee123',
+    name: 'Andi Pratama',
+    department: 'Marketing',
+    description: 'Karyawan / Requester permohonan bantuan IT',
+  },
+  'IT Support': {
+    email: 'budi@plishelp.co.id',
+    password: 'support123',
+    name: 'Budi Santoso',
+    department: 'IT Operations',
+    description: 'Teknisi helpdesk penangan tiket kendala',
+  },
+  Admin: {
+    email: 'admin@plishelp.co.id',
+    password: 'admin123',
+    name: 'Admin PlisHelp',
+    department: 'IT Infrastructure & Security',
+    description: 'Administrator sistem & pengelola master data',
+  },
+};
 
-const accounts:Record<Role,{email:string;password:string;name:string}> = { Employee:{email:'andi@plishelp.co.id',password:'employee123',name:'Andi Pratama'}, 'IT Support':{email:'budi@plishelp.co.id',password:'support123',name:'Budi Santoso'}, Admin:{email:'admin@plishelp.co.id',password:'admin123',name:'Admin PlisHelp'} }
-const seed:Ticket[] = [
- {id:'TKT-1048',title:'Laptop tidak bisa terhubung ke Wi-Fi kantor',category:'Network',subcategory:'Wi-Fi',type:'Incident',status:'In Progress',priority:'High',date:'Hari ini, 09:42',assignee:'Budi Santoso',requester:'Andi Pratama',department:'Marketing',sla:'01j 42m',description:'Sejak pagi laptop saya tidak dapat terhubung ke jaringan Wi-Fi kantor. Sudah mencoba restart dan forget network, namun masih belum berhasil.',comments:['Halo Andi, saya sedang mengecek konfigurasi jaringan di laptop kamu.'],internalNotes:[]},
- {id:'TKT-1047',title:'Request akses folder Finance',category:'Access Request',subcategory:'Shared Drive',type:'Service Request',status:'Need Info',priority:'Medium',date:'Hari ini, 08:15',assignee:'Belum ditugaskan',requester:'Siti Rahma',department:'Finance',sla:'03j 15m',description:'Mohon dibantu akses ke folder Finance pada shared drive untuk kebutuhan laporan bulanan.',comments:['Mohon lampirkan persetujuan dari manager terkait.'],internalNotes:[]},
- {id:'TKT-1045',title:'Install Adobe Creative Cloud',category:'Software',subcategory:'Installation',type:'Service Request',status:'Resolved',priority:'Low',date:'Kemarin, 16:20',assignee:'Dimas Saputra',requester:'Rina Wulandari',department:'Marketing',sla:'Selesai',description:'Instalasi Adobe Creative Cloud untuk kebutuhan desain tim Marketing.',comments:['Aplikasi sudah berhasil diinstal.'],internalNotes:[],rating:5},
- {id:'TKT-1042',title:'Monitor kedua tidak terdeteksi',category:'Hardware',subcategory:'Monitor',type:'Incident',status:'Closed',priority:'Medium',date:'20 Agu 2026, 14:30',assignee:'Budi Santoso',requester:'Andi Pratama',department:'Marketing',sla:'Selesai',description:'Monitor eksternal kedua tidak terdeteksi saat disambungkan melalui docking station.',comments:[],internalNotes:[],rating:4},
- {id:'TKT-1039',title:'VPN kantor tidak dapat digunakan',category:'Network',subcategory:'VPN',type:'Incident',status:'Escalated',priority:'High',date:'20 Agu 2026, 10:12',assignee:'Dimas Saputra',requester:'Yoga Ramadhan',department:'Sales',sla:'Overdue',description:'VPN menampilkan pesan authentication failed ketika mencoba login dari rumah.',comments:[],internalNotes:['Escalated ke Network Specialist untuk pengecekan gateway.']},
-]
-const statuses:Status[]=['Open','In Progress','Need Info','Escalated','Resolved','Closed','Reopened']
-function Badge({children, kind='status'}:{children:string;kind?:string}){return <span className={`badge ${kind}-${children.toLowerCase().replaceAll(' ','-')}`}><i/>{children}</span>}
-function Login({onLogin}:{onLogin:(r:Role)=>void}){const [role,setRole]=useState<Role>('Employee'); const [email,setEmail]=useState(accounts.Employee.email); const [password,setPassword]=useState(accounts.Employee.password); const [error,setError]=useState(''); const choose=(r:Role)=>{setRole(r);setEmail(accounts[r].email);setPassword(accounts[r].password)}; return <main className="login-shell"><section className="login-card"><div className="brand"><span className="brand-mark"><LifeBuoy/></span><b>Plis<span>Help</span></b></div><p className="eyebrow">INTERNAL IT HELPDESK</p><h1>Masuk ke workspace kamu</h1><p className="subheading">Pilih role untuk mencoba alur dashboard sesuai akses.</p><div className="login-roles">{(Object.keys(accounts) as Role[]).map(r=><button type="button" className={r===role?'role-chip active':'role-chip'} onClick={()=>choose(r)} key={r}><UserRound/>{r}</button>)}</div><form onSubmit={e=>{e.preventDefault(); if(email===accounts[role].email&&password===accounts[role].password){sessionStorage.setItem('plishelp-session',JSON.stringify({role}));onLogin(role)}else setError('Email atau password demo tidak sesuai.')}}><label>Email<input value={email} onChange={e=>setEmail(e.target.value)}/></label><label>Password<input type="password" value={password} onChange={e=>setPassword(e.target.value)}/></label>{error&&<small className="form-error">{error}</small>}<button className="primary-button login-submit">Masuk sebagai {role}<ChevronRight/></button></form><p className="demo-hint">Employee: employee123 · Support: support123 · Admin: admin123</p></section></main>}
-function Sidebar({role,active,setActive,onLogout}:{role:Role;active:string;setActive:(s:string)=>void;onLogout:()=>void}){const items=role==='Employee'?['Dashboard','Tiket Saya','Notifikasi']:role==='IT Support'?['Dashboard','Semua Tiket','Laporan','Notifikasi']:['Dashboard','Semua Tiket','Laporan','Notifikasi','Admin'];return <aside className="sidebar"><div className="brand"><span className="brand-mark"><LifeBuoy/></span><b>Plis<span>Help</span></b></div><div className="workspace"><span>PT</span><div><b>PT Plis Help</b><small>{role} workspace</small></div></div><p className="nav-label">WORKSPACE</p><nav>{items.map(x=><button className={active===x?'nav-item active':'nav-item'} onClick={()=>setActive(x)} key={x}>{x==='Dashboard'?<LayoutDashboard/>:x==='Notifikasi'?<Bell/>:x==='Laporan'?<Activity/>:x==='Admin'?<ShieldCheck/>:<TicketIcon/>}<span>{x}</span></button>)}</nav><div className="sidebar-bottom"><button className="nav-item" onClick={onLogout}><LogOut/><span>Keluar</span></button><div className="user-card"><div className="avatar avatar-blue">{accounts[role].name.split(' ').map(x=>x[0]).join('')}</div><div><b>{accounts[role].name}</b><small>{accounts[role].email}</small></div></div></div></aside>}
-function Metric({title,value,note,icon:Icon,tone}:{title:string;value:string;note:string;icon:typeof TicketIcon;tone:string}){return <div className="metric-card"><div className={`metric-icon ${tone}`}><Icon/></div><div className="metric-copy"><span>{title}</span><strong>{value}</strong><small>{note}</small></div></div>}
-function Dashboard({role,tickets,open,create}:{role:Role;tickets:Ticket[];open:(t:Ticket)=>void;create:()=>void}){const own=role==='Employee'?tickets.filter(t=>t.requester==='Andi Pratama'):tickets; const count=(s:Status)=>own.filter(t=>t.status===s).length; return <div className="page-content"><div className="page-heading"><div><p className="eyebrow">{role==='Employee'?'MY WORKSPACE':'IT OPERATIONS'}</p><h1>{role==='Employee'?'Selamat pagi, Andi':role==='IT Support'?'Support overview':'Admin overview'}</h1><p className="subheading">Pantau operasional helpdesk dan kebutuhan IT secara menyeluruh.</p></div><button className="primary-button" onClick={create}><Plus/> Buat Tiket Baru</button></div><div className="metrics-grid"><Metric title="Tiket Aktif" value={`${count('Open')+count('In Progress')+count('Need Info')}`} note={`${count('Need Info')} perlu perhatian`} icon={TicketIcon} tone="blue"/><Metric title="Dalam Proses" value={`${count('In Progress')}`} note="SLA dipantau real-time" icon={Clock3} tone="amber"/><Metric title="Overdue" value={`${own.filter(t=>t.sla==='Overdue').length}`} note="Perlu eskalasi" icon={Zap} tone="red"/><Metric title="SLA Compliance" value="96.4%" note="+4.2% bulan ini" icon={CheckCircle2} tone="green"/></div><div className="content-grid"><section className="panel tickets-panel"><div className="panel-header"><div><h2>{role==='Employee'?'Tiket Terbaru':'Queue Tiket'}</h2><p>Daftar tiket sesuai scope aksesmu.</p></div><button className="text-button" onClick={()=>open(own[0])}>Lihat detail <ChevronRight/></button></div><div className="ticket-list">{own.slice(0,5).map(t=><button className="ticket-row" key={t.id} onClick={()=>open(t)}><div><div className="ticket-id">{t.id}</div><b>{t.title}</b><span>{t.type} · {t.category} · {t.date}</span></div><div className="ticket-status"><Badge kind="priority">{t.priority}</Badge><Badge>{t.status}</Badge><ChevronRight/></div></button>)}</div></section><aside className="side-stack"><section className="panel"><div className="panel-header"><div><h2>Ringkasan SLA</h2><p>Agustus 2026</p></div><b className="sla-score">96.4%</b></div><div className="progress-track"><div/></div><div className="sla-details"><span>Within SLA <b>145</b></span><span>Breached <b>6</b></span></div></section><section className="panel attention"><h2>Perlu Perhatian</h2><p><Bell/> {count('Need Info')} tiket menunggu informasi requester</p><p><Clock3/> {own.filter(t=>t.sla==='Overdue').length} tiket melewati SLA</p></section></aside></div></div>}
-function Detail({ticket,role,onBack,onUpdate}:{ticket:Ticket;role:Role;onBack:()=>void;onUpdate:(t:Ticket)=>void}){const [comment,setComment]=useState('');const [internal,setInternal]=useState(false);const [file,setFile]=useState('');const canSupport=role!=='Employee'; const update=(patch:Partial<Ticket>)=>onUpdate({...ticket,...patch}); const addComment=()=>{if(!comment.trim())return; update({[internal?'internalNotes':'comments']:[...(internal?ticket.internalNotes:ticket.comments),comment]});setComment('')}; return <div className="page-content detail-page"><button className="back-button" onClick={onBack}>← Kembali ke tiket</button><div className="detail-header"><div><div className="detail-kicker"><span>{ticket.id}</span><Badge>{ticket.status}</Badge><Badge kind="priority">{ticket.priority}</Badge></div><h1>{ticket.title}</h1><p>{ticket.type} · {ticket.category} / {ticket.subcategory} · {ticket.department}</p></div></div><div className="detail-grid"><main><section className="panel detail-card"><h2>Deskripsi Tiket</h2><p className="description">{ticket.description}</p><div className="attachment"><FileText/><div><b>{file||'network-diagnostic.png'}</b><small>Attachment dummy · hingga 10MB</small></div><label className="text-button">Ganti<input type="file" hidden onChange={e=>setFile(e.target.files?.[0]?.name||'')}/></label></div></section><section className="panel activity-panel"><div className="panel-header"><div><h2>Aktivitas & Komentar</h2><p>Public comment dan internal note.</p></div></div>{[...ticket.comments,...ticket.internalNotes].map((c,i)=><div className={ticket.internalNotes.includes(c)?'timeline-item internal-note':'timeline-item'} key={`${c}-${i}`}><div className="avatar avatar-blue">{ticket.internalNotes.includes(c)?'IT':'AP'}</div><div><b>{ticket.internalNotes.includes(c)?'Internal Note':'Requester'}</b><small>Baru saja</small><p>{c}</p></div></div>)}<div className="comment-box"><div className="comment-tabs"><button className={!internal?'active':''} onClick={()=>setInternal(false)}>Public Comment</button>{canSupport&&<button className={internal?'active':''} onClick={()=>setInternal(true)}>Internal Note</button>}</div><textarea value={comment} onChange={e=>setComment(e.target.value)} placeholder={internal?'Catatan internal untuk tim support...':'Tulis balasan ke requester...'}/><button className="primary-button small" onClick={addComment}>Kirim Komentar</button></div></section></main><aside className="detail-side"><section className="panel info-panel"><h3>Workflow</h3><label>Status<select value={ticket.status} onChange={e=>update({status:e.target.value as Status})}>{statuses.map(s=><option key={s}>{s}</option>)}</select></label><label>Priority<select value={ticket.priority} onChange={e=>update({priority:e.target.value as Priority})}><option>High</option><option>Medium</option><option>Low</option></select></label><label>Assignee<select value={ticket.assignee} onChange={e=>update({assignee:e.target.value})}><option>Belum ditugaskan</option><option>Budi Santoso</option><option>Dimas Saputra</option></select></label><div className="workflow-actions">{canSupport&&ticket.assignee==='Belum ditugaskan'&&<button className="secondary-button" onClick={()=>update({assignee:accounts['IT Support'].name,status:'In Progress'})}>Take Ticket</button>}{canSupport&&<button className="primary-button" onClick={()=>update({status:'Resolved'})}>Resolve</button>}{(role==='Employee'||role==='Admin')&&ticket.status==='Resolved'&&<button className="secondary-button" onClick={()=>update({status:'Closed'})}>Close Ticket</button>}{ticket.status==='Closed'&&<button className="secondary-button" onClick={()=>update({status:'Reopened'})}>Reopen</button>}</div></section>{ticket.status==='Resolved'&&<Rating ticket={ticket} onRate={rating=>update({rating})}/>}</aside></div></div>}
-function Rating({ticket,onRate}:{ticket:Ticket;onRate:(n:number)=>void}){return <section className="panel rating"><h3>Rate your support</h3><p>Bagaimana pengalamanmu?</p><div>{[1,2,3,4,5].map(n=><button className={ticket.rating&&n<=ticket.rating?'rated':''} onClick={()=>onRate(n)} key={n}>★</button>)}</div></section>}
-function ListPage({active,role,tickets,open}:{active:string;role:Role;tickets:Ticket[];open:(t:Ticket)=>void}){const [query,setQuery]=useState('');const [status,setStatus]=useState('All');const [type,setType]=useState('All');const [sort,setSort]=useState('Newest');const own=role==='Employee'?tickets.filter(t=>t.requester==='Andi Pratama'):tickets;const rows=useMemo(()=>own.filter(t=>(status==='All'||t.status===status)&&(type==='All'||t.type===type)&&`${t.id} ${t.title} ${t.requester}`.toLowerCase().includes(query.toLowerCase())).sort((a,b)=>sort==='Priority'?a.priority.localeCompare(b.priority):0),[own,query,status,type,sort]);return <div className="page-content"><div className="page-heading"><div><p className="eyebrow">{active.toUpperCase()}</p><h1>{active==='Laporan'?'Laporan & Analitik':active}</h1><p className="subheading">Cari, filter, dan analisis data helpdesk.</p></div></div><section className="panel secondary-page-panel"><div className="table-toolbar"><div className="search-box"><Search/><input placeholder="Cari tiket atau requester..." value={query} onChange={e=>setQuery(e.target.value)}/></div><select value={status} onChange={e=>setStatus(e.target.value)}><option>All</option>{statuses.map(s=><option key={s}>{s}</option>)}</select><select value={type} onChange={e=>setType(e.target.value)}><option>All</option><option>Incident</option><option>Service Request</option></select><select value={sort} onChange={e=>setSort(e.target.value)}><option>Newest</option><option>Priority</option></select><Filter/></div><div className="table-list">{rows.length?rows.map(t=><button className="table-row" key={t.id} onClick={()=>open(t)}><div><b>{t.id}</b><span>{t.title}</span></div><Badge>{t.status}</Badge><Badge kind="priority">{t.priority}</Badge><span>{t.assignee}</span><ChevronRight/></button>):<div className="empty-state"><CircleHelp/><b>Tidak ada tiket ditemukan</b><span>Coba ubah filter atau kata kunci pencarian.</span></div>}</div></section></div>}
-function Admin(){return <div className="page-content"><div className="page-heading"><div><p className="eyebrow">ADMINISTRATION</p><h1>Admin Panel</h1><p className="subheading">Kelola master data dan akses pengguna.</p></div></div><div className="admin-cards"><section className="panel"><Users/><h2>Users & Roles</h2><p>128 pengguna aktif</p><button className="text-button">Kelola pengguna <ChevronRight/></button></section><section className="panel"><ShieldCheck/><h2>Departments</h2><p>8 departemen terdaftar</p><button className="text-button">Kelola departemen <ChevronRight/></button></section><section className="panel"><CircleHelp/><h2>Categories</h2><p>12 kategori · 28 subkategori</p><button className="text-button">Kelola kategori <ChevronRight/></button></section></div></div>}
-function Create({close,add}:{close:()=>void;add:(t:Ticket)=>void}){const [title,setTitle]=useState('');const [description,setDescription]=useState('');const [type,setType]=useState<TicketType>('Incident');const [category,setCategory]=useState('Hardware');return <div className="modal-backdrop"><section className="modal"><div className="modal-head"><div><p className="eyebrow">NEW REQUEST</p><h2>Buat Tiket Baru</h2></div><button className="icon-button" onClick={close}><X/></button></div><label>Judul Tiket<input value={title} onChange={e=>setTitle(e.target.value)} placeholder="Contoh: Laptop tidak bisa menyala"/></label><div className="form-row"><label>Tipe<select value={type} onChange={e=>setType(e.target.value as TicketType)}><option>Incident</option><option>Service Request</option></select></label><label>Kategori<select value={category} onChange={e=>setCategory(e.target.value)}><option>Hardware</option><option>Software</option><option>Network</option><option>Access Request</option></select></label></div><label>Deskripsi<textarea value={description} onChange={e=>setDescription(e.target.value)} placeholder="Ceritakan masalah atau kebutuhanmu..."/></label><div className="upload-area"><FileText/><span><b>Tambahkan lampiran</b><small>Dummy upload · PNG, JPG, PDF hingga 10MB</small></span></div><div className="modal-actions"><button className="secondary-button" onClick={close}>Batal</button><button className="primary-button" disabled={!title||!description} onClick={()=>{add({id:`TKT-${1050+Math.floor(Math.random()*99)}`,title,category,subcategory:'General',type,status:'Open',priority:'Medium',date:'Baru saja',assignee:'Belum ditugaskan',requester:'Andi Pratama',department:'Marketing',sla:'04j 00m',description,comments:[],internalNotes:[]});close()}}>Kirim Tiket <ChevronRight/></button></div></section></div>}
-export default function Page(){const [role,setRole]=useState<Role|null>(null);const [active,setActive]=useState('Dashboard');const [tickets,setTickets]=useState(seed);const [selected,setSelected]=useState<Ticket|null>(null);const [create,setCreate]=useState(false);useEffect(()=>{const saved=sessionStorage.getItem('plishelp-session');if(saved)setRole(JSON.parse(saved).role)},[]);if(!role)return <Login onLogin={setRole}/>;const logout=()=>{sessionStorage.removeItem('plishelp-session');setRole(null)};const content=selected?<Detail ticket={selected} role={role} onBack={()=>setSelected(null)} onUpdate={t=>{setTickets(x=>x.map(i=>i.id===t.id?t:i));setSelected(t)}}/>:active==='Dashboard'?<Dashboard role={role} tickets={tickets} open={setSelected} create={()=>setCreate(true)}/>:active==='Admin'?<Admin/>:active==='Notifikasi'?<ListPage active="Notifikasi" role={role} tickets={tickets} open={setSelected}/>:<ListPage active={active} role={role} tickets={tickets} open={setSelected}/>;return <div className="app-shell"><Sidebar role={role} active={active} setActive={s=>{setActive(s);setSelected(null)}} onLogout={logout}/><div className="main-shell"><header className="topbar"><div className="crumb">Workspace <ChevronRight/> <b>{active}</b></div><div className="top-actions"><span className="role-label"><UserRound/> {role}</span><button className="icon-button"><Bell/></button><button className="quick-button" onClick={()=>setCreate(true)}><Plus/> Buat Tiket</button></div></header>{content}</div>{create&&<Create close={()=>setCreate(false)} add={t=>setTickets(x=>[t,...x])}/>}</div>}
+export default function Home() {
+  // Authentication State - Default is null so the initial landing is always "Masuk ke Workspace"
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+  const [selectedRole, setSelectedRole] = useState<TicketRole>('Employee');
+  const [loginEmail, setLoginEmail] = useState(DEMO_ACCOUNTS.Employee.email);
+  const [loginPassword, setLoginPassword] = useState(DEMO_ACCOUNTS.Employee.password);
+  const [loginError, setLoginError] = useState('');
+
+  // Tickets & Notifications State
+  const [tickets, setTickets] = useState<Ticket[]>(INITIAL_TICKETS);
+  const [notifications, setNotifications] = useState<NotificationItem[]>(INITIAL_NOTIFICATIONS);
+  const [activeTab, setActiveTab] = useState<
+    'dashboard' | 'my-tickets' | 'create-ticket' | 'notifications' | 'profile'
+  >('dashboard');
+  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [initialStatusFilter, setInitialStatusFilter] = useState<TicketStatus | 'ALL'>('ALL');
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+
+  // Update email/password fields when user clicks role chip in login
+  const handleRoleSelect = (role: TicketRole) => {
+    setSelectedRole(role);
+    setLoginEmail(DEMO_ACCOUNTS[role].email);
+    setLoginPassword(DEMO_ACCOUNTS[role].password);
+    setLoginError('');
+  };
+
+  const handleLoginSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const targetAccount = DEMO_ACCOUNTS[selectedRole];
+    if (loginEmail.trim() === targetAccount.email && loginPassword === targetAccount.password) {
+      const userProfile: UserProfile = {
+        id: `usr-${selectedRole.toLowerCase()}`,
+        name: targetAccount.name,
+        email: targetAccount.email,
+        role: selectedRole,
+        department: targetAccount.department,
+      };
+      setCurrentUser(userProfile);
+      setLoginError('');
+    } else {
+      setLoginError('Email atau password tidak sesuai dengan kredensial demo.');
+    }
+  };
+
+  const handleLogout = () => {
+    setCurrentUser(null);
+    setSelectedTicketId(null);
+    setActiveTab('dashboard');
+  };
+
+  // Computed summary
+  const summary = useMemo(() => computeSummary(tickets), [tickets]);
+
+  // Active selected ticket object
+  const selectedTicket = useMemo(() => {
+    if (!selectedTicketId) return null;
+    return tickets.find((t) => t.id === selectedTicketId) || null;
+  }, [tickets, selectedTicketId]);
+
+  // Toast Helper
+  const addToast = (type: 'success' | 'error' | 'info', title: string, message: string) => {
+    const newToast: ToastMessage = {
+      id: `toast-${Date.now()}-${Math.random()}`,
+      type,
+      title,
+      message,
+    };
+    setToasts((prev) => [...prev, newToast]);
+  };
+
+  const removeToast = (id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  };
+
+  // Handlers for Ticket Actions
+  const handleCreateTicketSubmit = (newTicketData: {
+    title: string;
+    description: string;
+    type: any;
+    category: string;
+    subcategory: string;
+    priority: any;
+    attachments: any[];
+  }) => {
+    const newTicketNumber = generateTicketNumber();
+    const newId = `tkt-${Date.now()}`;
+    const nowIso = new Date().toISOString();
+
+    const createdTicket: Ticket = {
+      id: newId,
+      number: newTicketNumber,
+      title: newTicketData.title,
+      type: newTicketData.type,
+      category: newTicketData.category,
+      subcategory: newTicketData.subcategory,
+      priority: newTicketData.priority,
+      status: 'OPEN',
+      requesterName: currentUser?.name || 'Andi Pratama',
+      requesterEmail: currentUser?.email || 'andi@plishelp.co.id',
+      requesterDepartment: currentUser?.department || 'Marketing',
+      createdAt: nowIso,
+      updatedAt: nowIso,
+      slaStatus: 'Within SLA',
+      description: newTicketData.description,
+      attachments: newTicketData.attachments,
+      comments: [],
+      activities: [
+        {
+          id: `act-${Date.now()}`,
+          action: 'Ticket Created',
+          actor: currentUser?.name || 'Andi Pratama',
+          actorRole: 'Employee',
+          timestamp: nowIso,
+          note: 'Tiket berhasil dibuat dan masuk ke antrean IT Support.',
+        },
+      ],
+    };
+
+    setTickets((prev) => [createdTicket, ...prev]);
+
+    // Add notification
+    const newNotif: NotificationItem = {
+      id: `notif-${Date.now()}`,
+      ticketId: newId,
+      ticketNumber: newTicketNumber,
+      title: 'Tiket Berhasil Dibuat',
+      message: `Tiket ${newTicketNumber} telah masuk ke sistem dan akan segera ditinjau oleh IT Support.`,
+      type: 'status_change',
+      isRead: false,
+      createdAt: nowIso,
+    };
+    setNotifications((prev) => [newNotif, ...prev]);
+
+    addToast(
+      'success',
+      'Tiket Berhasil Dibuat',
+      `Tiket nomor ${newTicketNumber} berhasil dikirim ke IT Support.`
+    );
+
+    // Auto open created ticket detail
+    setSelectedTicketId(newId);
+  };
+
+  const handleCloseTicket = (ticketId: string) => {
+    const nowIso = new Date().toISOString();
+    setTickets((prev) =>
+      prev.map((t) => {
+        if (t.id !== ticketId) return t;
+        return {
+          ...t,
+          status: 'CLOSED',
+          closedAt: nowIso,
+          updatedAt: nowIso,
+          activities: [
+            ...t.activities,
+            {
+              id: `act-${Date.now()}`,
+              action: 'Ticket Closed',
+              actor: currentUser?.name || 'Andi Pratama',
+              actorRole: 'Employee',
+              timestamp: nowIso,
+              note: 'Requester mengonfirmasi bahwa permasalahan telah selesai.',
+            },
+          ],
+        };
+      })
+    );
+
+    addToast(
+      'success',
+      'Tiket Ditutup',
+      'Tiket telah resmi ditutup. Anda sekarang dapat memberikan rating & ulasan layanan.'
+    );
+  };
+
+  const handleReopenTicket = (ticketId: string, reason: string) => {
+    const nowIso = new Date().toISOString();
+    setTickets((prev) =>
+      prev.map((t) => {
+        if (t.id !== ticketId) return t;
+        return {
+          ...t,
+          status: 'IN_PROGRESS',
+          resolvedAt: undefined,
+          updatedAt: nowIso,
+          comments: [
+            ...t.comments,
+            {
+              id: `com-${Date.now()}`,
+              authorName: currentUser?.name || 'Andi Pratama',
+              authorRole: 'Employee',
+              body: `[REOPEN REASON]: ${reason}`,
+              createdAt: nowIso,
+              isInternal: false,
+            },
+          ],
+          activities: [
+            ...t.activities,
+            {
+              id: `act-${Date.now()}`,
+              action: 'Ticket Reopened',
+              actor: currentUser?.name || 'Andi Pratama',
+              actorRole: 'Employee',
+              timestamp: nowIso,
+              note: `Tiket dibuka kembali oleh requester dengan alasan: "${reason}"`,
+            },
+          ],
+        };
+      })
+    );
+
+    addToast(
+      'info',
+      'Tiket Dibuka Kembali',
+      'Tiket telah dikembalikan ke status In Progress untuk penanganan lebih lanjut.'
+    );
+  };
+
+  const handleSubmitRating = (ticketId: string, rating: TicketRating) => {
+    const nowIso = new Date().toISOString();
+    setTickets((prev) =>
+      prev.map((t) => {
+        if (t.id !== ticketId) return t;
+        return {
+          ...t,
+          rating,
+          updatedAt: nowIso,
+          activities: [
+            ...t.activities,
+            {
+              id: `act-${Date.now()}`,
+              action: 'Rating Submitted',
+              actor: currentUser?.name || 'Andi Pratama',
+              actorRole: 'Employee',
+              timestamp: nowIso,
+              note: `Memberikan penilaian ${rating.score}/5 bintang: "${rating.feedback || 'Tanpa komentar tambahan'}"`,
+            },
+          ],
+        };
+      })
+    );
+
+    addToast('success', 'Penilaian Diterima', 'Terima kasih atas rating & feedback yang Anda berikan!');
+  };
+
+  const handleAddComment = (ticketId: string, commentBody: string) => {
+    const nowIso = new Date().toISOString();
+    setTickets((prev) =>
+      prev.map((t) => {
+        if (t.id !== ticketId) return t;
+        return {
+          ...t,
+          updatedAt: nowIso,
+          comments: [
+            ...t.comments,
+            {
+              id: `com-${Date.now()}`,
+              authorName: currentUser?.name || 'Andi Pratama',
+              authorRole: 'Employee',
+              body: commentBody,
+              createdAt: nowIso,
+              isInternal: false,
+            },
+          ],
+          activities: [
+            ...t.activities,
+            {
+              id: `act-${Date.now()}`,
+              action: 'Requester Added Reply',
+              actor: currentUser?.name || 'Andi Pratama',
+              actorRole: 'Employee',
+              timestamp: nowIso,
+              note: `Membalas pesan: "${commentBody.slice(0, 50)}${commentBody.length > 50 ? '...' : ''}"`,
+            },
+          ],
+        };
+      })
+    );
+
+    addToast('success', 'Pesan Terkirim', 'Pesan balasan Anda berhasil dikirim ke IT Support.');
+  };
+
+  const handleMarkNotificationAsRead = (id: string) => {
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
+    );
+  };
+
+  const handleMarkAllNotificationsAsRead = () => {
+    setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+    addToast('info', 'Notifikasi Dibaca', 'Semua notifikasi telah ditandai sebagai dibaca.');
+  };
+
+  const handleSelectNotification = (notif: NotificationItem) => {
+    if (notif.ticketId) {
+      setSelectedTicketId(notif.ticketId);
+    }
+  };
+
+  const handleSummaryCardFilterClick = (status: TicketStatus | 'ALL') => {
+    setInitialStatusFilter(status);
+    setSelectedTicketId(null);
+    setActiveTab('my-tickets');
+  };
+
+  // 1. HALAMAN AWAL: MASUK KE WORKSPACE (PILIH ROLE)
+  if (!currentUser) {
+    const rolesList: TicketRole[] = ['Employee', 'IT Support', 'Admin'];
+
+    return (
+      <main className="min-h-screen flex items-center justify-center p-4 sm:p-6 bg-zinc-950 text-zinc-100 relative overflow-hidden">
+        {/* Ambient background glows */}
+        <div className="pointer-events-none absolute -top-24 -left-24 h-96 w-96 rounded-full bg-blue-600/10 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-24 -right-24 h-96 w-96 rounded-full bg-indigo-600/10 blur-3xl" />
+
+        <section className="relative w-full max-w-lg rounded-2xl border border-zinc-800 bg-zinc-900/90 p-6 sm:p-8 shadow-2xl backdrop-blur-xl space-y-6">
+          {/* Brand Header */}
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-600/30">
+              <LifeBuoy className="h-6 w-6" />
+            </div>
+            <div>
+              <div className="text-xl font-bold tracking-tight text-white flex items-center gap-1">
+                Plis<span className="text-blue-400">Help</span>
+              </div>
+              <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">
+                INTERNAL IT HELPDESK
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-white">
+              Masuk ke Workspace Kamu
+            </h1>
+            <p className="mt-1 text-xs text-zinc-400">
+              Pilih role untuk mencoba alur helpdesk sesuai scope hak akses:
+            </p>
+          </div>
+
+          {/* Role Switcher Chips */}
+          <div className="grid grid-cols-3 gap-2">
+            {rolesList.map((role) => {
+              const isActive = selectedRole === role;
+              const Icon =
+                role === 'Employee' ? UserRound : role === 'IT Support' ? Headphones : ShieldCheck;
+              return (
+                <button
+                  key={role}
+                  type="button"
+                  onClick={() => handleRoleSelect(role)}
+                  className={`flex flex-col items-center justify-center gap-1.5 rounded-xl border p-3 text-center transition-all ${
+                    isActive
+                      ? 'border-blue-500/60 bg-blue-600/15 text-blue-400 shadow-md shadow-blue-950/40 ring-1 ring-blue-500/30'
+                      : 'border-zinc-800 bg-zinc-850/60 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
+                  }`}
+                >
+                  <Icon className="h-4 w-4" />
+                  <span className="text-xs font-bold truncate">{role}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Role Description Card */}
+          <div className="rounded-xl border border-zinc-800/80 bg-zinc-850/40 p-3 text-xs text-zinc-400 flex items-start gap-2.5">
+            <Sparkles className="h-4 w-4 text-blue-400 shrink-0 mt-0.5" />
+            <div>
+              <strong className="text-zinc-200">{selectedRole}</strong>: {DEMO_ACCOUNTS[selectedRole].description}
+            </div>
+          </div>
+
+          {/* Login Form */}
+          <form onSubmit={handleLoginSubmit} className="space-y-4">
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-1.5">
+                Email Perusahaan
+              </label>
+              <div className="relative">
+                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
+                <input
+                  type="email"
+                  value={loginEmail}
+                  onChange={(e) => setLoginEmail(e.target.value)}
+                  className="w-full rounded-xl border border-zinc-700 bg-zinc-850 pl-10 pr-3.5 py-2.5 text-sm text-zinc-100 placeholder-zinc-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all"
+                  required
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-1.5">
+                Password
+              </label>
+              <div className="relative">
+                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
+                <input
+                  type="password"
+                  value={loginPassword}
+                  onChange={(e) => setLoginPassword(e.target.value)}
+                  className="w-full rounded-xl border border-zinc-700 bg-zinc-850 pl-10 pr-3.5 py-2.5 text-sm text-zinc-100 placeholder-zinc-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all"
+                  required
+                />
+              </div>
+            </div>
+
+            {loginError && (
+              <p className="text-xs text-rose-400 flex items-center gap-1.5 bg-rose-500/10 p-2.5 rounded-lg border border-rose-500/20">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                <span>{loginError}</span>
+              </p>
+            )}
+
+            <button
+              type="submit"
+              className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 via-blue-500 to-indigo-600 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-600/25 hover:from-blue-500 hover:to-indigo-500 active:scale-[0.99] transition-all"
+            >
+              <span>Masuk sebagai {selectedRole}</span>
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </form>
+
+          {/* Demo Hint */}
+          <p className="text-[11px] text-zinc-500 text-center leading-relaxed">
+            Employee: <code className="text-zinc-400">employee123</code> · Support:{' '}
+            <code className="text-zinc-400">support123</code> · Admin:{' '}
+            <code className="text-zinc-400">admin123</code>
+          </p>
+        </section>
+      </main>
+    );
+  }
+
+  // 2. JIKA LOGIN SEBAGAI IT SUPPORT: BUKA DASHBOARD IT SUPPORT
+  if (currentUser.role === 'IT Support') {
+    return <SupportDashboard user={currentUser} tickets={tickets} onLogout={handleLogout} />;
+  }
+
+  // 3. JIKA LOGIN SEBAGAI ADMIN: BUKA DASHBOARD ADMIN
+  if (currentUser.role === 'Admin') {
+    return <AdminDashboard user={currentUser} tickets={tickets} onLogout={handleLogout} />;
+  }
+
+  // 4. JIKA LOGIN SEBAGAI EMPLOYEE: BUKA DASHBOARD & WORKSPACE EMPLOYEE
+  return (
+    <>
+      <EmployeeLayout
+        user={currentUser}
+        activeNav={activeTab}
+        breadcrumbTitle={selectedTicket ? `Detail Tiket (${selectedTicket.number})` : undefined}
+        onNavigate={(tab) => {
+          setSelectedTicketId(null);
+          setActiveTab(tab);
+        }}
+        onCreateTicketClick={() => setIsCreateModalOpen(true)}
+        notifications={notifications}
+        onMarkNotificationAsRead={handleMarkNotificationAsRead}
+        onMarkAllNotificationsAsRead={handleMarkAllNotificationsAsRead}
+        onSelectNotification={handleSelectNotification}
+        onLogout={handleLogout}
+      >
+        {/* Render Content Based on Active View or Selected Ticket */}
+        {selectedTicket ? (
+          <TicketDetailView
+            ticket={selectedTicket}
+            currentUser={currentUser}
+            onBack={() => setSelectedTicketId(null)}
+            onCloseTicket={handleCloseTicket}
+            onReopenTicket={handleReopenTicket}
+            onSubmitRating={handleSubmitRating}
+            onAddComment={handleAddComment}
+          />
+        ) : activeTab === 'dashboard' ? (
+          <EmployeeDashboard
+            user={currentUser}
+            tickets={tickets}
+            summary={summary}
+            onCreateTicket={() => setIsCreateModalOpen(true)}
+            onOpenTicket={(ticket) => setSelectedTicketId(ticket.id)}
+            onSelectStatusFilter={handleSummaryCardFilterClick}
+            onViewAllTickets={() => {
+              setInitialStatusFilter('ALL');
+              setActiveTab('my-tickets');
+            }}
+          />
+        ) : activeTab === 'my-tickets' ? (
+          <MyTicketsView
+            tickets={tickets}
+            initialStatusFilter={initialStatusFilter}
+            onOpenTicket={(ticket) => setSelectedTicketId(ticket.id)}
+            onCreateTicket={() => setIsCreateModalOpen(true)}
+          />
+        ) : activeTab === 'profile' ? (
+          <ProfileView
+            user={currentUser}
+            tickets={tickets}
+            onCreateTicket={() => setIsCreateModalOpen(true)}
+          />
+        ) : (
+          <EmployeeDashboard
+            user={currentUser}
+            tickets={tickets}
+            summary={summary}
+            onCreateTicket={() => setIsCreateModalOpen(true)}
+            onOpenTicket={(ticket) => setSelectedTicketId(ticket.id)}
+            onSelectStatusFilter={handleSummaryCardFilterClick}
+            onViewAllTickets={() => setActiveTab('my-tickets')}
+          />
+        )}
+      </EmployeeLayout>
+
+      {/* Create Ticket Modal */}
+      <CreateTicketModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        onSubmit={handleCreateTicketSubmit}
+      />
+
+      {/* Toast Notification Container */}
+      <ToastContainer toasts={toasts} onDismiss={removeToast} />
+    </>
+  );
+}
