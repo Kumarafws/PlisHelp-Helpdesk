@@ -1,29 +1,29 @@
 import React, { useState } from 'react';
 import { UserProfile, NotificationItem } from '@/types/helpdesk';
-import { NotificationPopover } from './Notifications/NotificationPopover';
+import { NotificationPopover } from '@/components/employee/Notifications/NotificationPopover';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import {
   LifeBuoy,
   LayoutDashboard,
   Ticket as TicketIcon,
-  PlusCircle,
+  Hand,
+  Layers,
   Bell,
   User,
   LogOut,
   ChevronRight,
   Menu,
   X,
-  Sparkles,
-  ShieldAlert,
+  Headphones,
 } from 'lucide-react';
 
-interface EmployeeLayoutProps {
+interface SupportLayoutProps {
   user: UserProfile;
-  activeNav: 'dashboard' | 'my-tickets' | 'create-ticket' | 'notifications' | 'profile';
+  activeNav: 'dashboard' | 'my-tickets' | 'available-tickets' | 'all-tickets' | 'notifications' | 'profile';
   breadcrumbTitle?: string;
-  onNavigate: (tab: 'dashboard' | 'my-tickets' | 'create-ticket' | 'notifications' | 'profile') => void;
-  onCreateTicketClick: () => void;
+  onNavigate: (tab: 'dashboard' | 'my-tickets' | 'available-tickets' | 'all-tickets' | 'notifications' | 'profile') => void;
   notifications: NotificationItem[];
+  availableCount: number;
   onMarkNotificationAsRead: (id: string) => void;
   onMarkAllNotificationsAsRead: () => void;
   onSelectNotification: (notif: NotificationItem) => void;
@@ -31,13 +31,13 @@ interface EmployeeLayoutProps {
   children: React.ReactNode;
 }
 
-export const EmployeeLayout: React.FC<EmployeeLayoutProps> = ({
+export const SupportLayout: React.FC<SupportLayoutProps> = ({
   user,
   activeNav,
   breadcrumbTitle,
   onNavigate,
-  onCreateTicketClick,
   notifications,
+  availableCount,
   onMarkNotificationAsRead,
   onMarkAllNotificationsAsRead,
   onSelectNotification,
@@ -52,18 +52,27 @@ export const EmployeeLayout: React.FC<EmployeeLayoutProps> = ({
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'my-tickets', label: 'Tiket Saya (My Tickets)', icon: TicketIcon },
-    { id: 'create-ticket', label: 'Buat Tiket Baru', icon: PlusCircle, isAction: true },
-    { id: 'notifications', label: 'Notifikasi', icon: Bell, badgeCount: unreadNotifCount },
-    { id: 'profile', label: 'Profil Saya', icon: User },
+    { id: 'my-tickets', label: 'Tiket Tanggungan Saya', icon: TicketIcon },
+    {
+      id: 'available-tickets',
+      label: 'Tiket Tersedia (Open)',
+      icon: Hand,
+      badgeCount: availableCount,
+      badgeColor: 'bg-blue-500/20 text-blue-400 border border-blue-500/30',
+    },
+    { id: 'all-tickets', label: 'Semua Antrean Tiket', icon: Layers },
+    {
+      id: 'notifications',
+      label: 'Notifikasi',
+      icon: Bell,
+      badgeCount: unreadNotifCount,
+      badgeColor: 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30',
+    },
+    { id: 'profile', label: 'Profil Support', icon: User },
   ] as const;
 
-  const handleNavClick = (id: typeof navItems[number]['id'], isAction?: boolean) => {
-    if (isAction) {
-      onCreateTicketClick();
-    } else {
-      onNavigate(id);
-    }
+  const handleNavClick = (id: typeof navItems[number]['id']) => {
+    onNavigate(id);
     setMobileMenuOpen(false);
   };
 
@@ -71,51 +80,53 @@ export const EmployeeLayout: React.FC<EmployeeLayoutProps> = ({
     if (breadcrumbTitle) return breadcrumbTitle;
     switch (activeNav) {
       case 'dashboard':
-        return 'Dashboard Overview';
+        return 'Queue & Operations Overview';
       case 'my-tickets':
-        return 'Daftar Tiket Saya';
-      case 'create-ticket':
-        return 'Buat Tiket';
+        return 'Tiket Tanggungan Saya';
+      case 'available-tickets':
+        return 'Tiket Tersedia (Open Queue)';
+      case 'all-tickets':
+        return 'Seluruh Antrean Tiket Masuk';
       case 'notifications':
         return 'Pusat Notifikasi';
       case 'profile':
-        return 'Profil Pengguna';
+        return 'Profil Petugas Support';
       default:
         return 'Workspace';
     }
   };
 
   return (
-    <div className="flex min-h-screen bg-zinc-950 text-zinc-100 font-sans antialiased selection:bg-blue-600 selection:text-white">
+    <div className="flex min-h-screen bg-zinc-950 text-zinc-100 font-sans antialiased selection:bg-indigo-600 selection:text-white">
       {/* Desktop Sidebar */}
       <aside className="hidden lg:flex w-64 flex-col justify-between border-r border-zinc-800/80 bg-zinc-900/60 p-5 backdrop-blur-xl shrink-0 sticky top-0 h-screen">
         <div className="space-y-6">
           {/* Brand Logo */}
           <div className="flex items-center gap-3 px-1">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-600/30">
-              <LifeBuoy className="h-5 w-5" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-tr from-indigo-600 to-blue-600 text-white shadow-lg shadow-indigo-600/30">
+              <Headphones className="h-5 w-5" />
             </div>
             <div>
               <div className="text-lg font-bold tracking-tight text-white flex items-center gap-1">
-                Plis<span className="text-blue-400">Help</span>
+                Plis<span className="text-indigo-400">Help</span>
               </div>
-              <div className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
-                IT Helpdesk System
+              <div className="text-[10px] font-semibold uppercase tracking-widest text-indigo-400">
+                IT Support Portal
               </div>
             </div>
           </div>
 
-          {/* Company & Department Tag */}
+          {/* Department Unit Tag */}
           <div className="rounded-xl border border-zinc-800 bg-zinc-850/50 p-3">
-            <div className="text-[11px] font-medium text-zinc-400">Departemen</div>
+            <div className="text-[11px] font-medium text-zinc-400">Unit Operasional</div>
             <div className="text-xs font-bold text-zinc-200 mt-0.5">{user.department}</div>
-            <div className="mt-1 flex items-center gap-1.5 text-[10px] font-medium text-blue-400">
-              <span className="h-1.5 w-1.5 rounded-full bg-blue-400"></span>
-              <span>Employee Portal</span>
+            <div className="mt-1 flex items-center gap-1.5 text-[10px] font-medium text-indigo-400">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
+              <span>Resolver Duty Active</span>
             </div>
           </div>
 
-          {/* Nav List */}
+          {/* Navigation Items */}
           <div className="space-y-1">
             <div className="px-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-500 mb-2">
               Menu Utama
@@ -127,23 +138,27 @@ export const EmployeeLayout: React.FC<EmployeeLayoutProps> = ({
                 <button
                   key={item.id}
                   type="button"
-                  onClick={() => handleNavClick(item.id, 'isAction' in item && item.isAction)}
+                  onClick={() => handleNavClick(item.id)}
                   className={`group flex w-full items-center justify-between rounded-xl px-3.5 py-2.5 text-xs font-medium transition-all ${
                     isActive
-                      ? 'bg-blue-600/15 text-blue-400 border border-blue-500/30 font-semibold'
+                      ? 'bg-indigo-600/15 text-indigo-400 border border-indigo-500/30 font-semibold'
                       : 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'
                   }`}
                 >
                   <div className="flex items-center gap-3">
                     <Icon
                       className={`h-4 w-4 transition-transform group-hover:scale-110 ${
-                        isActive ? 'text-blue-400' : 'text-zinc-400'
+                        isActive ? 'text-indigo-400' : 'text-zinc-400'
                       }`}
                     />
                     <span>{item.label}</span>
                   </div>
                   {'badgeCount' in item && typeof item.badgeCount === 'number' && item.badgeCount > 0 && (
-                    <span className="rounded-full bg-blue-500/20 px-2 py-0.5 text-[10px] font-bold text-blue-400 border border-blue-500/30">
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                        item.badgeColor || 'bg-zinc-800 text-zinc-300'
+                      }`}
+                    >
                       {item.badgeCount}
                     </span>
                   )}
@@ -153,10 +168,10 @@ export const EmployeeLayout: React.FC<EmployeeLayoutProps> = ({
           </div>
         </div>
 
-        {/* Sidebar Footer User Info & Logout */}
+        {/* User Card & Logout */}
         <div className="space-y-3 pt-4 border-t border-zinc-800/80">
           <div className="flex items-center gap-3 rounded-xl bg-zinc-850/40 p-2.5 border border-zinc-800/60">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-blue-600/30 to-indigo-600/30 text-blue-300 font-bold text-xs border border-blue-500/20">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-indigo-600/30 to-blue-600/30 text-indigo-300 font-bold text-xs border border-indigo-500/20">
               {user.name
                 .split(' ')
                 .map((n) => n[0])
@@ -197,15 +212,15 @@ export const EmployeeLayout: React.FC<EmployeeLayoutProps> = ({
         <div className="space-y-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-white shadow-lg shadow-blue-600/30">
-                <LifeBuoy className="h-5 w-5" />
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-lg shadow-indigo-600/30">
+                <Headphones className="h-5 w-5" />
               </div>
               <div>
                 <div className="text-lg font-bold text-white">
-                  Plis<span className="text-blue-400">Help</span>
+                  Plis<span className="text-indigo-400">Help</span>
                 </div>
                 <div className="text-[10px] text-zinc-500 font-semibold uppercase tracking-wider">
-                  Employee Portal
+                  IT Support Portal
                 </div>
               </div>
             </div>
@@ -226,10 +241,10 @@ export const EmployeeLayout: React.FC<EmployeeLayoutProps> = ({
                 <button
                   key={item.id}
                   type="button"
-                  onClick={() => handleNavClick(item.id, 'isAction' in item && item.isAction)}
+                  onClick={() => handleNavClick(item.id)}
                   className={`flex w-full items-center justify-between rounded-xl px-3.5 py-3 text-xs font-medium ${
                     isActive
-                      ? 'bg-blue-600 text-white font-semibold shadow-md shadow-blue-600/20'
+                      ? 'bg-indigo-600 text-white font-semibold shadow-md'
                       : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'
                   }`}
                 >
@@ -250,8 +265,8 @@ export const EmployeeLayout: React.FC<EmployeeLayoutProps> = ({
 
         <div className="pt-4 border-t border-zinc-800 space-y-3">
           <div className="flex items-center gap-3 rounded-xl bg-zinc-850 p-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600/20 text-blue-300 font-bold text-xs">
-              AP
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600/20 text-indigo-300 font-bold text-xs">
+              BS
             </div>
             <div className="min-w-0 flex-1">
               <div className="text-xs font-semibold text-zinc-200 truncate">{user.name}</div>
@@ -287,7 +302,7 @@ export const EmployeeLayout: React.FC<EmployeeLayoutProps> = ({
 
             {/* Breadcrumbs */}
             <div className="flex items-center gap-2 text-xs font-medium text-zinc-400">
-              <span>Employee Portal</span>
+              <span className="text-indigo-400">IT Support Portal</span>
               <ChevronRight className="h-3.5 w-3.5 text-zinc-600" />
               <span className="text-zinc-100 font-semibold">{getBreadcrumbTitle()}</span>
             </div>
@@ -295,21 +310,20 @@ export const EmployeeLayout: React.FC<EmployeeLayoutProps> = ({
 
           {/* Right Action Icons */}
           <div className="flex items-center gap-3">
-            {/* Notification Bell */}
             <div className="relative">
               <button
                 type="button"
                 onClick={() => setShowNotificationPopover(!showNotificationPopover)}
                 className={`relative flex h-9 w-9 items-center justify-center rounded-xl border transition-all ${
                   showNotificationPopover
-                    ? 'bg-blue-600/15 border-blue-500/40 text-blue-400'
+                    ? 'bg-indigo-600/15 border-indigo-500/40 text-indigo-400'
                     : 'border-zinc-800 bg-zinc-900/60 text-zinc-300 hover:border-zinc-700 hover:text-white'
                 }`}
                 aria-label="Notifications"
               >
                 <Bell className="h-4 w-4" />
                 {unreadNotifCount > 0 && (
-                  <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-blue-500 text-[10px] font-bold text-white">
+                  <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-indigo-500 text-[10px] font-bold text-white">
                     {unreadNotifCount}
                   </span>
                 )}
@@ -328,15 +342,10 @@ export const EmployeeLayout: React.FC<EmployeeLayoutProps> = ({
               />
             </div>
 
-            {/* Quick Create Ticket Button */}
-            <button
-              type="button"
-              onClick={onCreateTicketClick}
-              className="hidden sm:inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-3.5 py-2 text-xs font-semibold text-white shadow-md shadow-blue-600/20 hover:from-blue-500 hover:to-indigo-500 transition-all"
-            >
-              <PlusCircle className="h-3.5 w-3.5" />
-              <span>Buat Tiket</span>
-            </button>
+            <span className="hidden sm:inline-flex items-center gap-1.5 rounded-xl border border-indigo-500/30 bg-indigo-500/10 px-3 py-1.5 text-xs font-semibold text-indigo-400">
+              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span>Resolver Active</span>
+            </span>
           </div>
         </header>
 
@@ -350,11 +359,12 @@ export const EmployeeLayout: React.FC<EmployeeLayoutProps> = ({
         title="Konfirmasi Keluar (Logout)"
         description={
           <div>
-            <p>Apakah Anda yakin ingin keluar dari sesi akun <strong>{user.name}</strong>?</p>
+            <p>Apakah Anda yakin ingin keluar dari sesi IT Support <strong>{user.name}</strong>?</p>
+            <p className="mt-2 text-zinc-400 text-xs">Pastikan Anda telah menyimpan atau memperbarui catatan investigasi tiket yang sedang dikerjakan.</p>
           </div>
         }
         confirmText="Ya, Keluar Akun"
-        cancelText="Tetap Masuk"
+        cancelText="Batal"
         variant="danger"
         icon={<LogOut className="h-6 w-6 text-rose-400" />}
         onConfirm={() => {

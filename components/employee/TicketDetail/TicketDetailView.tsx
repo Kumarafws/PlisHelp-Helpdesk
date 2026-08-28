@@ -227,7 +227,7 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
               <div className="flex justify-between items-center">
                 <span className="text-zinc-400">Status SLA</span>
                 <span className="font-semibold text-emerald-400">
-                  {ticket.slaStatus || 'Within SLA'}
+                  {ticket.slaInfo?.status || (ticket.status === 'NEED_INFO' ? 'PAUSED' : 'WITHIN_SLA')}
                 </span>
               </div>
 

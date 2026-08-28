@@ -16,6 +16,7 @@ import {
 
 interface CreateTicketModalProps {
   isOpen: boolean;
+  categories?: CategoryInfo[];
   onClose: () => void;
   onSubmit: (newTicketData: {
     title: string;
@@ -30,12 +31,18 @@ interface CreateTicketModalProps {
 
 export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
   isOpen,
+  categories = CATEGORIES_DATA,
   onClose,
   onSubmit,
 }) => {
+  const activeCategories = categories.filter((c) => c.active !== false);
+  const defaultCategory = activeCategories[0] || CATEGORIES_DATA[0];
+
   const [ticketType, setTicketType] = useState<TicketType>('Incident');
-  const [selectedCategory, setSelectedCategory] = useState<string>(CATEGORIES_DATA[0].name);
-  const [selectedSubcategory, setSelectedSubcategory] = useState<string>(CATEGORIES_DATA[0].subcategories[0]);
+  const [selectedCategory, setSelectedCategory] = useState<string>(defaultCategory.name);
+  const [selectedSubcategory, setSelectedSubcategory] = useState<string>(
+    defaultCategory.subcategories[0] || ''
+  );
   const [priority, setPriority] = useState<TicketPriority>('MEDIUM');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -44,7 +51,8 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Update subcategory options whenever category changes
-  const activeCategoryObj = CATEGORIES_DATA.find((c) => c.name === selectedCategory) || CATEGORIES_DATA[0];
+  const activeCategoryObj =
+    activeCategories.find((c) => c.name === selectedCategory) || defaultCategory;
 
   useEffect(() => {
     if (activeCategoryObj && activeCategoryObj.subcategories.length > 0) {
@@ -223,7 +231,7 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
                 onChange={(e) => setSelectedCategory(e.target.value)}
                 className="w-full rounded-xl border border-zinc-700 bg-zinc-850 px-3.5 py-2.5 text-sm text-zinc-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all"
               >
-                {CATEGORIES_DATA.map((cat) => (
+                {activeCategories.map((cat) => (
                   <option key={cat.id} value={cat.name}>
                     {cat.name}
                   </option>

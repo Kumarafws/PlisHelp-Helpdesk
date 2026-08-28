@@ -13,16 +13,46 @@ export type TicketPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
 
 export type TicketType = 'Incident' | 'Service Request';
 
+export type SLAStatusType = 'WITHIN_SLA' | 'AT_RISK' | 'BREACHED' | 'PAUSED';
+
 export interface CategoryInfo {
   id: string;
   name: string;
   subcategories: string[];
+  active?: boolean;
+}
+
+export interface DepartmentInfo {
+  id: string;
+  name: string;
+  code: string;
+  active: boolean;
+  employeeCount: number;
+}
+
+export interface ManagedUser {
+  id: string;
+  name: string;
+  email: string;
+  role: TicketRole;
+  department: string;
+  status: 'ACTIVE' | 'INACTIVE';
+  createdAt: string;
+}
+
+export interface SLAPolicyItem {
+  id: string;
+  priority: TicketPriority;
+  responseTargetMinutes: number;
+  resolutionTargetHours: number;
+  description: string;
+  active: boolean;
 }
 
 export interface TicketAttachment {
   id: string;
   fileName: string;
-  fileSize: string; // e.g. "1.2 MB"
+  fileSize: string;
   fileType: string;
   url?: string;
   uploadedAt: string;
@@ -35,7 +65,7 @@ export interface TicketComment {
   authorAvatar?: string;
   body: string;
   createdAt: string;
-  isInternal: boolean;
+  isInternal: boolean; // true = Internal Note (Support/Admin only)
 }
 
 export interface TicketActivity {
@@ -53,9 +83,17 @@ export interface TicketRating {
   createdAt: string;
 }
 
+export interface TicketSLAInfo {
+  responseTargetMinutes: number;
+  responseActualMinutes?: number;
+  resolutionTargetHours: number;
+  remainingTimeFormatted: string;
+  status: SLAStatusType;
+}
+
 export interface Ticket {
   id: string;
-  number: string; // e.g. "PH-20260825-0005"
+  number: string;
   title: string;
   type: TicketType;
   category: string;
@@ -72,9 +110,10 @@ export interface Ticket {
   resolvedAt?: string;
   closedAt?: string;
   slaDueAt?: string;
-  slaStatus?: 'Within SLA' | 'Near Breach' | 'Breached';
+  slaInfo?: TicketSLAInfo;
   description: string;
   resolutionSummary?: string;
+  escalationReason?: string;
   attachments: TicketAttachment[];
   comments: TicketComment[];
   activities: TicketActivity[];
@@ -87,7 +126,7 @@ export interface NotificationItem {
   ticketNumber?: string;
   title: string;
   message: string;
-  type: 'status_change' | 'comment' | 'action_required' | 'resolved' | 'assigned';
+  type: 'status_change' | 'comment' | 'action_required' | 'resolved' | 'assigned' | 'escalated';
   isRead: boolean;
   createdAt: string;
 }
@@ -109,4 +148,27 @@ export interface DashboardSummary {
   resolved: number;
   closed: number;
   actionRequiredCount: number;
+}
+
+export interface SupportDashboardSummary {
+  assignedToMe: number;
+  inProgress: number;
+  needInfo: number;
+  overdueOrAtRisk: number;
+  resolved: number;
+  availableCount: number;
+}
+
+export interface AdminDashboardSummary {
+  totalTickets: number;
+  open: number;
+  assigned: number;
+  inProgress: number;
+  needInfo: number;
+  resolved: number;
+  closed: number;
+  overdue: number;
+  totalEmployees: number;
+  totalSupport: number;
+  slaComplianceRate: number; // e.g. 96.4
 }
