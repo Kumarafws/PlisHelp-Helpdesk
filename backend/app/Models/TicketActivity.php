@@ -5,21 +5,22 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class TicketComment extends Model
+class TicketActivity extends Model
 {
     protected $fillable = [
         'ticket_id',
         'user_id',
-        'author_name',
-        'author_role',
-        'body',
-        'is_internal',
+        'action',
+        'actor_name',
+        'actor_role',
+        'note',
+        'metadata',
     ];
 
     protected function casts(): array
     {
         return [
-            'is_internal' => 'boolean',
+            'metadata' => 'array', // Maps cleanly to PostgreSQL JSONB
         ];
     }
 

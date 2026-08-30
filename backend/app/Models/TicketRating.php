@@ -5,21 +5,19 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class TicketComment extends Model
+class TicketRating extends Model
 {
     protected $fillable = [
         'ticket_id',
         'user_id',
-        'author_name',
-        'author_role',
-        'body',
-        'is_internal',
+        'score',
+        'feedback',
     ];
 
     protected function casts(): array
     {
         return [
-            'is_internal' => 'boolean',
+            'score' => 'integer',
         ];
     }
 
