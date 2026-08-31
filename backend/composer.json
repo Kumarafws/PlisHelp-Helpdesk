@@ -1,21 +1,22 @@
 {
   "name": "plishelp/backend",
   "type": "project",
-  "description": "PlisHelp Internal IT Helpdesk RESTful API Backend",
-  "keywords": ["framework", "laravel", "helpdesk", "postgresql", "eloquent"],
+  "description": "PlisHelp Internal IT Helpdesk RESTful API Backend (Laravel 13 + PostgreSQL + Eloquent ORM)",
+  "keywords": ["framework", "laravel", "helpdesk", "postgresql", "eloquent", "laravel-13"],
   "license": "MIT",
   "require": {
-    "php": "^8.1",
+    "php": "^8.2|^8.3|^8.4",
     "guzzlehttp/guzzle": "^7.2",
-    "laravel/framework": "^10.0",
-    "laravel/sanctum": "^3.3",
+    "laravel/framework": "^13.0",
+    "laravel/sanctum": "^4.0",
     "laravel/tinker": "^2.8"
   },
   "require-dev": {
     "fakerphp/faker": "^1.23",
+    "laravel/pint": "^1.18",
     "mockery/mockery": "^1.6",
-    "nunomaduro/collision": "^7.0",
-    "phpunit/phpunit": "^10.0"
+    "nunomaduro/collision": "^8.4",
+    "phpunit/phpunit": "^11.3"
   },
   "autoload": {
     "psr-4": {
