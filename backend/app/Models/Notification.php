@@ -18,13 +18,10 @@ class Notification extends Model
         'read_at',
     ];
 
-    protected function casts(): array
-    {
-        return [
-            'is_read' => 'boolean',
-            'read_at' => 'datetime',
-        ];
-    }
+    protected $casts = [
+        'is_read' => 'boolean',
+        'read_at' => 'datetime',
+    ];
 
     public function user(): BelongsTo
     {

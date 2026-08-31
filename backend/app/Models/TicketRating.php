@@ -14,12 +14,9 @@ class TicketRating extends Model
         'feedback',
     ];
 
-    protected function casts(): array
-    {
-        return [
-            'score' => 'integer',
-        ];
-    }
+    protected $casts = [
+        'score' => 'integer',
+    ];
 
     public function ticket(): BelongsTo
     {

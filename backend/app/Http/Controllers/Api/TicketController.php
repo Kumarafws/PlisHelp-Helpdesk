@@ -47,11 +47,11 @@ class TicketController extends Controller
         $validated = $request->validate([
             'title' => ['required', 'string', 'max:255'],
             'description' => ['required', 'string', 'min:10'],
-            'type' => ['nullable', 'string', 'in:Incident,Request'],
+            'type' => ['nullable', 'string', 'in:Incident,Request,Service Request'],
             'category_id' => ['required', 'exists:categories,id'],
             'subcategory_id' => ['nullable', 'exists:subcategories,id'],
             'subcategory_name' => ['nullable', 'string'],
-            'priority' => ['nullable', 'string', 'in:LOW,MEDIUM,HIGH,CRITICAL'],
+            'priority' => ['nullable', 'string', 'in:LOW,MEDIUM,HIGH,CRITICAL,URGENT'],
             'department_id' => ['nullable', 'exists:departments,id'],
             'attachments' => ['nullable', 'array'],
             'attachments.*.file_name' => ['required_with:attachments', 'string'],

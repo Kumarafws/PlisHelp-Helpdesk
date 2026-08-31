@@ -124,7 +124,7 @@ class MasterDataController extends Controller
     {
         $validated = $request->validate([
             'policies' => ['required', 'array'],
-            'policies.*.priority' => ['required', 'string', 'in:LOW,MEDIUM,HIGH,CRITICAL'],
+            'policies.*.priority' => ['required', 'string', 'in:LOW,MEDIUM,HIGH,CRITICAL,URGENT'],
             'policies.*.response_target_minutes' => ['required', 'integer', 'min:5'],
             'policies.*.resolution_target_hours' => ['required', 'integer', 'min:1'],
             'policies.*.description' => ['nullable', 'string'],

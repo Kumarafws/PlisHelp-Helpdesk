@@ -15,11 +15,8 @@ class SLAPolicy extends Model
         'description',
     ];
 
-    protected function casts(): array
-    {
-        return [
-            'response_target_minutes' => 'integer',
-            'resolution_target_hours' => 'integer',
-        ];
-    }
+    protected $casts = [
+        'response_target_minutes' => 'integer',
+        'resolution_target_hours' => 'integer',
+    ];
 }

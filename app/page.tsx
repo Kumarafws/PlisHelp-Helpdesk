@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   Ticket,
   TicketRating,
@@ -14,9 +14,6 @@ import {
   SLAPolicyItem,
 } from '@/types/helpdesk';
 import {
-  CURRENT_EMPLOYEE,
-  CURRENT_SUPPORT,
-  CURRENT_ADMIN,
   INITIAL_TICKETS,
   INITIAL_NOTIFICATIONS,
   INITIAL_USERS,
@@ -26,8 +23,9 @@ import {
   computeSummary,
   computeSupportSummary,
   computeAdminSummary,
-  generateTicketNumber,
 } from '@/services/mockTicketService';
+import { ticketApiService } from '@/services/ticketApiService';
+import { tokenStorage, ApiError } from '@/lib/apiClient';
 
 // Employee Components
 import { EmployeeLayout } from '@/components/employee/EmployeeLayout';
@@ -67,6 +65,7 @@ import {
   Lock,
   Mail,
   AlertCircle,
+  Loader2,
 } from 'lucide-react';
 
 const DEMO_ACCOUNTS: Record<
@@ -75,21 +74,21 @@ const DEMO_ACCOUNTS: Record<
 > = {
   Employee: {
     email: 'andi@plishelp.co.id',
-    password: 'employee123',
+    password: 'password123',
     name: 'Andi Pratama',
     department: 'Marketing & Communications',
     description: 'Karyawan / Requester permohonan bantuan IT',
   },
   'IT Support': {
     email: 'budi@plishelp.co.id',
-    password: 'support123',
+    password: 'password123',
     name: 'Budi Santoso',
     department: 'IT Operations & Helpdesk',
     description: 'Teknisi helpdesk resolver penangan kendala IT',
   },
   Admin: {
     email: 'admin@plishelp.co.id',
-    password: 'admin123',
+    password: 'password123',
     name: 'Admin PlisHelp',
     department: 'IT Operations & Helpdesk',
     description: 'Administrator sistem & pengelola master data',
@@ -103,8 +102,10 @@ export default function Home() {
   const [loginEmail, setLoginEmail] = useState(DEMO_ACCOUNTS.Employee.email);
   const [loginPassword, setLoginPassword] = useState(DEMO_ACCOUNTS.Employee.password);
   const [loginError, setLoginError] = useState('');
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(true);
 
-  // Core Master Data State
+  // Core Data State (Synced with Backend API)
   const [tickets, setTickets] = useState<Ticket[]>(INITIAL_TICKETS);
   const [notifications, setNotifications] = useState<NotificationItem[]>(INITIAL_NOTIFICATIONS);
   const [users, setUsers] = useState<ManagedUser[]>(INITIAL_USERS);
@@ -138,6 +139,89 @@ export default function Home() {
   const [initialStatusFilter, setInitialStatusFilter] = useState<TicketStatus | 'ALL'>('ALL');
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
+  // Toast Helper
+  const addToast = useCallback((type: 'success' | 'error' | 'info', title: string, message: string) => {
+    const newToast: ToastMessage = {
+      id: `toast-${Date.now()}-${Math.random()}`,
+      type,
+      title,
+      message,
+    };
+    setToasts((prev) => [...prev, newToast]);
+  }, []);
+
+  const removeToast = (id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  };
+
+  // Load All App Data from Backend
+  const loadAppData = useCallback(async (user?: UserProfile | null) => {
+    const role = user?.role || currentUser?.role;
+    try {
+      const [ticketsRes, notifsRes, deptsRes, catsRes, slaRes] = await Promise.allSettled([
+        ticketApiService.getTickets(),
+        ticketApiService.getNotifications(),
+        ticketApiService.getDepartments(),
+        ticketApiService.getCategories(),
+        ticketApiService.getSlaPolicies(),
+      ]);
+
+      if (ticketsRes.status === 'fulfilled') {
+        setTickets(ticketsRes.value.tickets);
+      }
+      if (notifsRes.status === 'fulfilled') {
+        setNotifications(notifsRes.value);
+      }
+      if (deptsRes.status === 'fulfilled' && deptsRes.value.length > 0) {
+        setDepartments(deptsRes.value);
+      }
+      if (catsRes.status === 'fulfilled' && catsRes.value.length > 0) {
+        setCategories(catsRes.value);
+      }
+      if (slaRes.status === 'fulfilled' && slaRes.value.length > 0) {
+        setSlaPolicies(slaRes.value);
+      }
+
+      if (role === 'Admin') {
+        try {
+          const usersRes = await ticketApiService.getUsers();
+          if (usersRes.length > 0) {
+            setUsers(usersRes);
+          }
+        } catch {
+          // silent fallback
+        }
+      }
+    } catch (err: any) {
+      console.error('Error loading app data:', err);
+    }
+  }, [currentUser?.role]);
+
+  // Session Recovery on Mount (Auto-login)
+  useEffect(() => {
+    async function initAuth() {
+      const token = tokenStorage.get();
+      if (!token) {
+        setIsInitializing(false);
+        return;
+      }
+
+      try {
+        const user = await ticketApiService.getMe();
+        setCurrentUser(user);
+        setSelectedRole(user.role);
+        await loadAppData(user);
+      } catch {
+        tokenStorage.clear();
+        setCurrentUser(null);
+      } finally {
+        setIsInitializing(false);
+      }
+    }
+
+    initAuth();
+  }, [loadAppData]);
+
   // Update credentials when clicking role chip
   const handleRoleSelect = (role: TicketRole) => {
     setSelectedRole(role);
@@ -146,49 +230,39 @@ export default function Home() {
     setLoginError('');
   };
 
-  const handleLoginSubmit = (e: React.FormEvent) => {
+  // Submit Login
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const targetAccount = DEMO_ACCOUNTS[selectedRole];
-    if (loginEmail.trim() === targetAccount.email && loginPassword === targetAccount.password) {
-      const userProfile: UserProfile = {
-        id: `usr-${selectedRole.toLowerCase()}`,
-        name: targetAccount.name,
-        email: targetAccount.email,
-        role: selectedRole,
-        department: targetAccount.department,
-      };
-      setCurrentUser(userProfile);
-      setLoginError('');
+    setLoginError('');
+    setIsLoggingIn(true);
+
+    try {
+      const { user } = await ticketApiService.login(loginEmail.trim(), loginPassword);
+      setCurrentUser(user);
       setSelectedTicketId(null);
       setActiveTab('dashboard');
       setSupportNav('dashboard');
       setAdminNav('dashboard');
-    } else {
-      setLoginError('Email atau password tidak sesuai dengan kredensial demo.');
+      addToast('success', 'Login Berhasil', `Selamat datang kembali, ${user.name}!`);
+      await loadAppData(user);
+    } catch (err: any) {
+      const msg = err instanceof ApiError ? err.message : 'Kredensial email atau password tidak sesuai.';
+      setLoginError(msg);
+      addToast('error', 'Gagal Masuk', msg);
+    } finally {
+      setIsLoggingIn(false);
     }
   };
 
-  const handleLogout = () => {
+  // Logout
+  const handleLogout = async () => {
+    await ticketApiService.logout();
     setCurrentUser(null);
     setSelectedTicketId(null);
     setActiveTab('dashboard');
     setSupportNav('dashboard');
     setAdminNav('dashboard');
-  };
-
-  // Toast Helper
-  const addToast = (type: 'success' | 'error' | 'info', title: string, message: string) => {
-    const newToast: ToastMessage = {
-      id: `toast-${Date.now()}-${Math.random()}`,
-      type,
-      title,
-      message,
-    };
-    setToasts((prev) => [...prev, newToast]);
-  };
-
-  const removeToast = (id: string) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
+    addToast('info', 'Sesi Berakhir', 'Anda telah keluar dari aplikasi.');
   };
 
   // Selected Ticket Object
@@ -209,17 +283,17 @@ export default function Home() {
     () =>
       currentUser
         ? computeSupportSummary(tickets, currentUser)
-        : computeSupportSummary(tickets, CURRENT_SUPPORT),
+        : computeSupportSummary(tickets, { id: '2', name: 'Budi Santoso', email: 'budi@plishelp.co.id', role: 'IT Support', department: 'IT Operations' }),
     [tickets, currentUser]
   );
   const adminSummary = useMemo(() => computeAdminSummary(tickets, users), [tickets, users]);
 
   // ==========================================
-  // SHARED ACTIONS & LOGIC
+  // SHARED ACTIONS & WORKFLOW TRANSITIONS
   // ==========================================
 
   // 1. Employee Creates Ticket
-  const handleCreateTicketSubmit = (newTicketData: {
+  const handleCreateTicketSubmit = async (newTicketData: {
     title: string;
     description: string;
     type: any;
@@ -228,681 +302,320 @@ export default function Home() {
     priority: any;
     attachments: any[];
   }) => {
-    const newTicketNumber = generateTicketNumber();
-    const newId = `tkt-${Date.now()}`;
-    const nowIso = new Date().toISOString();
+    try {
+      const catObj = categories.find((c) => c.name.toLowerCase() === newTicketData.category.toLowerCase());
+      const catId = catObj?.id ? Number(catObj.id) : 1;
 
-    const createdTicket: Ticket = {
-      id: newId,
-      number: newTicketNumber,
-      title: newTicketData.title,
-      type: newTicketData.type,
-      category: newTicketData.category,
-      subcategory: newTicketData.subcategory,
-      priority: newTicketData.priority,
-      status: 'OPEN',
-      requesterName: currentUser?.name || 'Andi Pratama',
-      requesterEmail: currentUser?.email || 'andi@plishelp.co.id',
-      requesterDepartment: currentUser?.department || 'Marketing & Communications',
-      createdAt: nowIso,
-      updatedAt: nowIso,
-      slaDueAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-      slaInfo: {
-        responseTargetMinutes: 30,
-        resolutionTargetHours: 4,
-        remainingTimeFormatted: '03h 59m',
-        status: 'WITHIN_SLA',
-      },
-      description: newTicketData.description,
-      attachments: newTicketData.attachments,
-      comments: [],
-      activities: [
-        {
-          id: `act-${Date.now()}`,
-          action: 'Ticket Created',
-          actor: currentUser?.name || 'Andi Pratama',
-          actorRole: 'Employee',
-          timestamp: nowIso,
-          note: 'Tiket berhasil dibuat dan masuk ke antrean IT Support.',
-        },
-      ],
-    };
+      const created = await ticketApiService.createTicket({
+        title: newTicketData.title,
+        description: newTicketData.description,
+        type: newTicketData.type,
+        category_id: catId,
+        subcategory_name: newTicketData.subcategory,
+        priority: newTicketData.priority,
+        attachments: newTicketData.attachments.map((a) => ({
+          file_name: a.fileName,
+          file_size: a.fileSize,
+          file_type: a.fileType,
+          path: a.url || `/uploads/${a.fileName}`,
+        })),
+      });
 
-    setTickets((prev) => [createdTicket, ...prev]);
+      addToast(
+        'success',
+        'Tiket Berhasil Dibuat',
+        `Tiket nomor ${created.number} berhasil dikirim ke antrean IT Support.`
+      );
 
-    const newNotif: NotificationItem = {
-      id: `notif-${Date.now()}`,
-      ticketId: newId,
-      ticketNumber: newTicketNumber,
-      title: 'Tiket Berhasil Dibuat',
-      message: `Tiket ${newTicketNumber} telah masuk ke sistem helpdesk.`,
-      type: 'status_change',
-      isRead: false,
-      createdAt: nowIso,
-    };
-    setNotifications((prev) => [newNotif, ...prev]);
-
-    addToast(
-      'success',
-      'Tiket Berhasil Dibuat',
-      `Tiket nomor ${newTicketNumber} berhasil dikirim ke antrean IT Support.`
-    );
-
-    setSelectedTicketId(newId);
+      await loadAppData();
+      setSelectedTicketId(created.id);
+      setIsCreateModalOpen(false);
+    } catch (err: any) {
+      addToast('error', 'Gagal Membuat Tiket', err.message || 'Terjadi kesalahan saat menyimpan tiket.');
+    }
   };
 
-  // 2. IT Support / Admin Takes or Assigns Ticket
-  const handleTakeTicket = (ticketId: string) => {
-    const nowIso = new Date().toISOString();
-    const supportName = currentUser?.name || 'Budi Santoso';
-    const supportEmail = currentUser?.email || 'budi@plishelp.co.id';
-    let takenTicketNumber = '';
-
-    setTickets((prev) =>
-      prev.map((t) => {
-        if (t.id !== ticketId) return t;
-        takenTicketNumber = t.number;
-        return {
-          ...t,
-          status: 'IN_PROGRESS',
-          assigneeName: supportName,
-          assigneeEmail: supportEmail,
-          updatedAt: nowIso,
-          activities: [
-            ...t.activities,
-            {
-              id: `act-${Date.now()}`,
-              action: 'Ticket Assigned / Taken',
-              actor: supportName,
-              actorRole: 'IT Support',
-              timestamp: nowIso,
-              note: `Tiket diambil oleh ${supportName} untuk segera dilakukan investigasi.`,
-            },
-          ],
-        };
-      })
-    );
-
-    const notif: NotificationItem = {
-      id: `notif-${Date.now()}`,
-      ticketId,
-      ticketNumber: takenTicketNumber,
-      title: 'Tiket Sedang Ditangani',
-      message: `Tiket ${takenTicketNumber} telah ditugaskan kepada ${supportName}.`,
-      type: 'assigned',
-      isRead: false,
-      createdAt: nowIso,
-    };
-    setNotifications((prev) => [notif, ...prev]);
-
-    addToast(
-      'success',
-      'Tiket Berhasil Diambil',
-      `Anda telah menjadi penanggung jawab tiket ${takenTicketNumber}.`
-    );
+  // 2. IT Support Takes Ticket
+  const handleTakeTicket = async (ticketId: string) => {
+    try {
+      const updated = await ticketApiService.takeTicket(ticketId);
+      addToast('success', 'Tiket Berhasil Diambil', `Anda telah menjadi penanggung jawab tiket ${updated.number}.`);
+      await loadAppData();
+    } catch (err: any) {
+      addToast('error', 'Gagal Mengambil Tiket', err.message || 'Tiket tidak dapat diambil.');
+    }
   };
 
   // Admin Assign / Reassign / Unassign
-  const handleAdminAssignTicket = (
+  const handleAdminAssignTicket = async (
     ticketId: string,
     assignee: ManagedUser | null,
     reason?: string
   ) => {
-    const target = tickets.find((t) => t.id === ticketId);
-    if (target && (target.status === 'RESOLVED' || target.status === 'CLOSED')) {
+    try {
+      const assigneeId = assignee?.id ? Number(assignee.id) : null;
+      await ticketApiService.assignTicket(ticketId, assigneeId, reason);
       addToast(
-        'error',
-        'Penugasan Terkunci',
-        'Tiket yang sudah Resolved atau Closed tidak dapat dialihkan penugasannya untuk menjaga integritas KPI teknisi.'
+        'success',
+        'Penugasan Diperbarui',
+        assignee
+          ? `Tiket berhasil ditugaskan ke ${assignee.name}.`
+          : `Tiket dikembalikan ke status Open tanpa penanggung jawab.`
       );
-      return;
+      await loadAppData();
+    } catch (err: any) {
+      addToast('error', 'Gagal Menugaskan Tiket', err.message || 'Penugasan gagal diperbarui.');
     }
-
-    const nowIso = new Date().toISOString();
-    const adminName = currentUser?.name || 'Admin PlisHelp';
-    let targetTicketNumber = '';
-
-    setTickets((prev) =>
-      prev.map((t) => {
-        if (t.id !== ticketId) return t;
-        targetTicketNumber = t.number;
-
-        if (!assignee) {
-          return {
-            ...t,
-            status: 'OPEN',
-            assigneeName: undefined,
-            assigneeEmail: undefined,
-            updatedAt: nowIso,
-            activities: [
-              ...t.activities,
-              {
-                id: `act-${Date.now()}`,
-                action: 'Ticket Unassigned by Admin',
-                actor: adminName,
-                actorRole: 'Admin',
-                timestamp: nowIso,
-                note: `Penugasan dibatalkan oleh Administrator. Alasan: "${reason || 'Penugasan ulang'}"`,
-              },
-            ],
-          };
-        }
-
-        const nextStatus = t.status === 'OPEN' ? 'IN_PROGRESS' : t.status;
-        return {
-          ...t,
-          status: nextStatus,
-          assigneeName: assignee.name,
-          assigneeEmail: assignee.email,
-          updatedAt: nowIso,
-          activities: [
-            ...t.activities,
-            {
-              id: `act-${Date.now()}`,
-              action: 'Ticket Assigned by Admin',
-              actor: adminName,
-              actorRole: 'Admin',
-              timestamp: nowIso,
-              note: `Admin menugaskan tiket kepada ${assignee.name}. ${reason ? `Alasan: "${reason}"` : ''}`,
-            },
-          ],
-        };
-      })
-    );
-
-    addToast(
-      'success',
-      'Penugasan Diperbarui',
-      assignee
-        ? `Tiket ${targetTicketNumber} berhasil ditugaskan ke ${assignee.name}.`
-        : `Tiket ${targetTicketNumber} dikembalikan ke status Open tanpa penanggung jawab.`
-    );
   };
 
   // Admin Override Status
-  const handleAdminOverrideStatus = (
+  const handleAdminOverrideStatus = async (
     ticketId: string,
     newStatus: TicketStatus,
     reason: string
   ) => {
-    const nowIso = new Date().toISOString();
-    const adminName = currentUser?.name || 'Admin PlisHelp';
-    let targetNum = '';
-
-    setTickets((prev) =>
-      prev.map((t) => {
-        if (t.id !== ticketId) return t;
-        targetNum = t.number;
-        return {
-          ...t,
-          status: newStatus,
-          updatedAt: nowIso,
-          activities: [
-            ...t.activities,
-            {
-              id: `act-${Date.now()}`,
-              action: `Admin Status Override to ${newStatus}`,
-              actor: adminName,
-              actorRole: 'Admin',
-              timestamp: nowIso,
-              note: `Administrator melakukan koreksi status ke ${newStatus}. Alasan: "${reason}"`,
-            },
-          ],
-        };
-      })
-    );
-
-    addToast(
-      'info',
-      'Override Status Berhasil',
-      `Status tiket ${targetNum} berhasil diubah ke ${newStatus}.`
-    );
+    try {
+      await ticketApiService.overrideStatus(ticketId, newStatus, reason);
+      addToast('info', 'Override Status Berhasil', `Status tiket berhasil diubah ke ${newStatus}.`);
+      await loadAppData();
+    } catch (err: any) {
+      addToast('error', 'Gagal Override Status', err.message || 'Koreksi status gagal.');
+    }
   };
 
   // 3. Request Information
-  const handleRequestInfo = (ticketId: string, message: string) => {
-    const nowIso = new Date().toISOString();
-    const supportName = currentUser?.name || 'Budi Santoso';
-    let targetTicketNumber = '';
-
-    setTickets((prev) =>
-      prev.map((t) => {
-        if (t.id !== ticketId) return t;
-        targetTicketNumber = t.number;
-        return {
-          ...t,
-          status: 'NEED_INFO',
-          updatedAt: nowIso,
-          slaInfo: t.slaInfo ? { ...t.slaInfo, status: 'PAUSED' } : undefined,
-          comments: [
-            ...t.comments,
-            {
-              id: `com-${Date.now()}`,
-              authorName: supportName,
-              authorRole: currentUser?.role || 'IT Support',
-              body: `[PERMINTAAN INFORMASI]: ${message}`,
-              createdAt: nowIso,
-              isInternal: false,
-            },
-          ],
-          activities: [
-            ...t.activities,
-            {
-              id: `act-${Date.now()}`,
-              action: 'Status Changed to NEED_INFO',
-              actor: supportName,
-              actorRole: currentUser?.role || 'IT Support',
-              timestamp: nowIso,
-              note: `Meminta informasi tambahan: "${message.slice(0, 60)}..."`,
-            },
-          ],
-        };
-      })
-    );
-
-    const notif: NotificationItem = {
-      id: `notif-${Date.now()}`,
-      ticketId,
-      ticketNumber: targetTicketNumber,
-      title: 'Informasi Tambahan Diperlukan',
-      message: `${supportName} memerlukan informasi tambahan pada tiket ${targetTicketNumber}: "${message}"`,
-      type: 'action_required',
-      isRead: false,
-      createdAt: nowIso,
-    };
-    setNotifications((prev) => [notif, ...prev]);
-
-    addToast(
-      'info',
-      'Permintaan Info Dikirim',
-      `Status tiket diubah ke Need Info dan penghitungan SLA di-pause.`
-    );
+  const handleRequestInfo = async (ticketId: string, message: string) => {
+    try {
+      await ticketApiService.requestInfo(ticketId, message);
+      addToast('info', 'Permintaan Info Dikirim', 'Status tiket diubah ke Need Info dan penghitungan SLA di-pause.');
+      await loadAppData();
+    } catch (err: any) {
+      addToast('error', 'Gagal Mengirim Permintaan', err.message || 'Tidak dapat mengubah status.');
+    }
   };
 
   // 4. Resolve Ticket
-  const handleResolveTicket = (ticketId: string, resolutionSummary: string) => {
-    const nowIso = new Date().toISOString();
-    const supportName = currentUser?.name || 'Budi Santoso';
-    let resolvedTicketNumber = '';
-
-    setTickets((prev) =>
-      prev.map((t) => {
-        if (t.id !== ticketId) return t;
-        resolvedTicketNumber = t.number;
-        return {
-          ...t,
-          status: 'RESOLVED',
-          resolvedAt: nowIso,
-          resolutionSummary,
-          updatedAt: nowIso,
-          activities: [
-            ...t.activities,
-            {
-              id: `act-${Date.now()}`,
-              action: 'Ticket Resolved',
-              actor: supportName,
-              actorRole: currentUser?.role || 'IT Support',
-              timestamp: nowIso,
-              note: `Tiket diselesaikan dengan ringkasan: "${resolutionSummary}"`,
-            },
-          ],
-        };
-      })
-    );
-
-    const notif: NotificationItem = {
-      id: `notif-${Date.now()}`,
-      ticketId,
-      ticketNumber: resolvedTicketNumber,
-      title: 'Tiket Telah Diselesaikan (Resolved)',
-      message: `Tiket ${resolvedTicketNumber} telah selesai. Mohon konfirmasi penutupan tiket.`,
-      type: 'resolved',
-      isRead: false,
-      createdAt: nowIso,
-    };
-    setNotifications((prev) => [notif, ...prev]);
-
-    addToast(
-      'success',
-      'Tiket Ditandai Resolved',
-      `Tiket ${resolvedTicketNumber} berhasil diselesaikan. Menunggu konfirmasi requester.`
-    );
+  const handleResolveTicket = async (ticketId: string, resolutionSummary: string) => {
+    try {
+      const updated = await ticketApiService.resolveTicket(ticketId, resolutionSummary);
+      addToast('success', 'Tiket Ditandai Resolved', `Tiket ${updated.number} berhasil diselesaikan. Menunggu konfirmasi.`);
+      await loadAppData();
+    } catch (err: any) {
+      addToast('error', 'Gagal Menyelesaikan Tiket', err.message || 'Gagal mengubah status resolved.');
+    }
   };
 
   // 5. Escalate Ticket
-  const handleEscalateTicket = (ticketId: string, reason: string) => {
-    const nowIso = new Date().toISOString();
-    const supportName = currentUser?.name || 'Budi Santoso';
-    let escalatedNumber = '';
-
-    setTickets((prev) =>
-      prev.map((t) => {
-        if (t.id !== ticketId) return t;
-        escalatedNumber = t.number;
-        return {
-          ...t,
-          status: 'ESCALATED',
-          escalationReason: reason,
-          updatedAt: nowIso,
-          activities: [
-            ...t.activities,
-            {
-              id: `act-${Date.now()}`,
-              action: 'Ticket Escalated',
-              actor: supportName,
-              actorRole: currentUser?.role || 'IT Support',
-              timestamp: nowIso,
-              note: `Eskalasi ke level yang lebih tinggi: "${reason}"`,
-            },
-          ],
-        };
-      })
-    );
-
-    const notif: NotificationItem = {
-      id: `notif-${Date.now()}`,
-      ticketId,
-      ticketNumber: escalatedNumber,
-      title: 'Tiket Dieskalasi',
-      message: `Tiket ${escalatedNumber} telah dieskalasi ke tim specialist IT Admin.`,
-      type: 'escalated',
-      isRead: false,
-      createdAt: nowIso,
-    };
-    setNotifications((prev) => [notif, ...prev]);
-
-    addToast(
-      'info',
-      'Tiket Berhasil Dieskalasi',
-      `Tiket ${escalatedNumber} telah dialihkan ke status Escalated.`
-    );
+  const handleEscalateTicket = async (ticketId: string, reason: string) => {
+    try {
+      const updated = await ticketApiService.escalateTicket(ticketId, reason);
+      addToast('info', 'Tiket Berhasil Dieskalasi', `Tiket ${updated.number} telah dialihkan ke status Escalated.`);
+      await loadAppData();
+    } catch (err: any) {
+      addToast('error', 'Gagal Eskalasi', err.message || 'Eskalasi gagal dilakukan.');
+    }
   };
 
   // 6. Comments (Public & Internal)
-  const handleAddComment = (ticketId: string, commentBody: string, isInternal = false) => {
-    const nowIso = new Date().toISOString();
-    const authorName = currentUser?.name || 'User';
-    const authorRole = currentUser?.role || 'Employee';
-
-    setTickets((prev) =>
-      prev.map((t) => {
-        if (t.id !== ticketId) return t;
-
-        const nextStatus =
-          t.status === 'NEED_INFO' && authorRole === 'Employee' ? 'IN_PROGRESS' : t.status;
-        const nextSlaStatus =
-          t.status === 'NEED_INFO' && authorRole === 'Employee' ? 'WITHIN_SLA' : t.slaInfo?.status;
-
-        return {
-          ...t,
-          status: nextStatus,
-          updatedAt: nowIso,
-          slaInfo: t.slaInfo ? { ...t.slaInfo, status: nextSlaStatus as any } : undefined,
-          comments: [
-            ...t.comments,
-            {
-              id: `com-${Date.now()}`,
-              authorName,
-              authorRole,
-              body: commentBody,
-              createdAt: nowIso,
-              isInternal,
-            },
-          ],
-          activities: [
-            ...t.activities,
-            {
-              id: `act-${Date.now()}`,
-              action: isInternal
-                ? 'Internal Note Added'
-                : authorRole === 'Employee'
-                ? 'Requester Added Reply'
-                : `${authorRole} Added Comment`,
-              actor: authorName,
-              actorRole: authorRole as TicketRole,
-              timestamp: nowIso,
-              note: isInternal
-                ? 'Catatan troubleshooting internal ditambahkan.'
-                : `Membalas pesan: "${commentBody.slice(0, 50)}${commentBody.length > 50 ? '...' : ''}"`,
-            },
-          ],
-        };
-      })
-    );
-
-    addToast(
-      'success',
-      isInternal ? 'Catatan Tersimpan' : 'Pesan Terkirim',
-      isInternal
-        ? 'Catatan internal berhasil disimpan khusus untuk tim IT.'
-        : 'Pesan Anda berhasil dikirimkan.'
-    );
+  const handleAddComment = async (ticketId: string, commentBody: string, isInternal = false) => {
+    try {
+      await ticketApiService.addComment(ticketId, commentBody, isInternal);
+      addToast(
+        'success',
+        isInternal ? 'Catatan Tersimpan' : 'Pesan Terkirim',
+        isInternal
+          ? 'Catatan internal berhasil disimpan khusus untuk tim IT.'
+          : 'Pesan Anda berhasil dikirimkan.'
+      );
+      await loadAppData();
+    } catch (err: any) {
+      addToast('error', 'Gagal Mengirim Komentar', err.message || 'Pesan gagal dikirim.');
+    }
   };
 
   // 7. Employee Closes Ticket
-  const handleCloseTicket = (ticketId: string) => {
-    const nowIso = new Date().toISOString();
-    setTickets((prev) =>
-      prev.map((t) => {
-        if (t.id !== ticketId) return t;
-        return {
-          ...t,
-          status: 'CLOSED',
-          closedAt: nowIso,
-          updatedAt: nowIso,
-          activities: [
-            ...t.activities,
-            {
-              id: `act-${Date.now()}`,
-              action: 'Ticket Closed',
-              actor: currentUser?.name || 'Andi Pratama',
-              actorRole: 'Employee',
-              timestamp: nowIso,
-              note: 'Requester mengonfirmasi bahwa permasalahan telah selesai.',
-            },
-          ],
-        };
-      })
-    );
-
-    addToast(
-      'success',
-      'Tiket Ditutup',
-      'Tiket telah resmi ditutup. Anda sekarang dapat memberikan rating & ulasan layanan.'
-    );
+  const handleCloseTicket = async (ticketId: string) => {
+    try {
+      await ticketApiService.closeTicket(ticketId);
+      addToast('success', 'Tiket Ditutup', 'Tiket telah resmi ditutup. Anda sekarang dapat memberikan rating & ulasan.');
+      await loadAppData();
+    } catch (err: any) {
+      addToast('error', 'Gagal Menutup Tiket', err.message || 'Tidak dapat menutup tiket.');
+    }
   };
 
   // 8. Employee Reopens Ticket
-  const handleReopenTicket = (ticketId: string, reason: string) => {
-    const nowIso = new Date().toISOString();
-    setTickets((prev) =>
-      prev.map((t) => {
-        if (t.id !== ticketId) return t;
-        return {
-          ...t,
-          status: 'IN_PROGRESS',
-          resolvedAt: undefined,
-          updatedAt: nowIso,
-          comments: [
-            ...t.comments,
-            {
-              id: `com-${Date.now()}`,
-              authorName: currentUser?.name || 'Andi Pratama',
-              authorRole: 'Employee',
-              body: `[REOPEN REASON]: ${reason}`,
-              createdAt: nowIso,
-              isInternal: false,
-            },
-          ],
-          activities: [
-            ...t.activities,
-            {
-              id: `act-${Date.now()}`,
-              action: 'Ticket Reopened',
-              actor: currentUser?.name || 'Andi Pratama',
-              actorRole: 'Employee',
-              timestamp: nowIso,
-              note: `Tiket dibuka kembali oleh requester dengan alasan: "${reason}"`,
-            },
-          ],
-        };
-      })
-    );
-
-    addToast(
-      'info',
-      'Tiket Dibuka Kembali',
-      'Tiket telah dikembalikan ke status In Progress untuk penanganan lebih lanjut.'
-    );
+  const handleReopenTicket = async (ticketId: string, reason: string) => {
+    try {
+      await ticketApiService.reopenTicket(ticketId, reason);
+      addToast('info', 'Tiket Dibuka Kembali', 'Tiket telah dikembalikan ke status In Progress untuk penanganan lebih lanjut.');
+      await loadAppData();
+    } catch (err: any) {
+      addToast('error', 'Gagal Membuka Kembali Tiket', err.message || 'Tiket gagal dibuka kembali.');
+    }
   };
 
   // 9. Employee Submits Rating
-  const handleSubmitRating = (ticketId: string, rating: TicketRating) => {
-    const nowIso = new Date().toISOString();
-    setTickets((prev) =>
-      prev.map((t) => {
-        if (t.id !== ticketId) return t;
-        return {
-          ...t,
-          rating,
-          updatedAt: nowIso,
-          activities: [
-            ...t.activities,
-            {
-              id: `act-${Date.now()}`,
-              action: 'Rating Submitted',
-              actor: currentUser?.name || 'Andi Pratama',
-              actorRole: 'Employee',
-              timestamp: nowIso,
-              note: `Memberikan penilaian ${rating.score}/5 bintang: "${rating.feedback || 'Tanpa komentar tambahan'}"`,
-            },
-          ],
-        };
-      })
-    );
-
-    addToast('success', 'Penilaian Diterima', 'Terima kasih atas rating & feedback yang Anda berikan!');
+  const handleSubmitRating = async (ticketId: string, rating: TicketRating) => {
+    try {
+      await ticketApiService.submitRating(ticketId, rating.score, rating.feedback);
+      addToast('success', 'Penilaian Diterima', 'Terima kasih atas rating & feedback yang Anda berikan!');
+      await loadAppData();
+    } catch (err: any) {
+      addToast('error', 'Gagal Menyimpan Rating', err.message || 'Rating gagal disimpan.');
+    }
   };
 
   // 10. Admin User Management CRUD
-  const handleSaveUser = (userData: {
+  const handleSaveUser = async (userData: {
     id?: string;
     name: string;
     email: string;
+    password?: string;
     role: TicketRole;
     department: string;
     status: 'ACTIVE' | 'INACTIVE';
   }) => {
-    if (userData.id) {
-      setUsers((prev) =>
-        prev.map((u) => (u.id === userData.id ? { ...u, ...userData } : u))
-      );
-      addToast('success', 'User Diperbarui', `Data akun ${userData.name} berhasil disimpan.`);
-    } else {
-      const newUser: ManagedUser = {
-        id: `usr-${Date.now()}`,
-        name: userData.name,
-        email: userData.email,
-        role: userData.role,
-        department: userData.department,
-        status: userData.status,
-        createdAt: new Date().toISOString(),
-      };
-      setUsers((prev) => [newUser, ...prev]);
-      addToast('success', 'User Dibuat', `Akun baru ${userData.name} berhasil ditambahkan.`);
+    try {
+      const deptObj = departments.find((d) => d.name.toLowerCase() === userData.department.toLowerCase());
+      const deptId = deptObj?.id ? Number(deptObj.id) : undefined;
+
+      if (userData.id && !userData.id.startsWith('usr-temp')) {
+        await ticketApiService.updateUser(userData.id, {
+          name: userData.name,
+          email: userData.email,
+          role: userData.role,
+          department_id: deptId,
+          status: userData.status,
+          password: userData.password || undefined,
+        });
+        addToast('success', 'User Diperbarui', `Data akun ${userData.name} berhasil disimpan.`);
+      } else {
+        await ticketApiService.createUser({
+          name: userData.name,
+          email: userData.email,
+          password: userData.password || 'password123',
+          role: userData.role,
+          department_id: deptId,
+          status: userData.status,
+        });
+        addToast('success', 'User Dibuat', `Akun baru ${userData.name} berhasil ditambahkan.`);
+      }
+      await loadAppData();
+    } catch (err: any) {
+      addToast('error', 'Gagal Menyimpan User', err.message || 'User gagal disimpan.');
     }
   };
 
-  const handleToggleUserStatus = (userId: string) => {
-    setUsers((prev) =>
-      prev.map((u) =>
-        u.id === userId
-          ? { ...u, status: u.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE' }
-          : u
-      )
-    );
-    addToast('info', 'Status Akun', 'Status keaktifan akun berhasil diubah.');
+  const handleToggleUserStatus = async (userId: string) => {
+    try {
+      await ticketApiService.toggleUserStatus(userId);
+      addToast('info', 'Status Akun', 'Status keaktifan akun berhasil diubah.');
+      await loadAppData();
+    } catch (err: any) {
+      addToast('error', 'Gagal Mengubah Status', err.message || 'Gagal mengubah status.');
+    }
   };
 
   // 11. Admin Department Management CRUD
-  const handleSaveDepartment = (deptData: {
+  const handleSaveDepartment = async (deptData: {
     id?: string;
     name: string;
     code: string;
     active: boolean;
   }) => {
-    if (deptData.id) {
-      setDepartments((prev) =>
-        prev.map((d) => (d.id === deptData.id ? { ...d, ...deptData } : d))
-      );
-      addToast('success', 'Departemen Diperbarui', `Departemen ${deptData.name} berhasil diubah.`);
-    } else {
-      const newDept: DepartmentInfo = {
-        id: `dept-${Date.now()}`,
+    try {
+      await ticketApiService.saveDepartment({
+        id: deptData.id && !deptData.id.startsWith('dept-temp') ? Number(deptData.id) : undefined,
         name: deptData.name,
         code: deptData.code,
-        active: deptData.active,
-        employeeCount: 0,
-      };
-      setDepartments((prev) => [...prev, newDept]);
-      addToast('success', 'Departemen Dibuat', `Departemen baru ${deptData.name} berhasil dibuat.`);
+        is_active: deptData.active,
+      });
+      addToast('success', 'Departemen Disimpan', `Departemen ${deptData.name} berhasil disimpan.`);
+      await loadAppData();
+    } catch (err: any) {
+      addToast('error', 'Gagal Menyimpan Departemen', err.message || 'Departemen gagal disimpan.');
     }
   };
 
-  const handleToggleDepartmentStatus = (deptId: string) => {
-    setDepartments((prev) =>
-      prev.map((d) => (d.id === deptId ? { ...d, active: !d.active } : d))
-    );
-    addToast('info', 'Status Departemen', 'Status keaktifan departemen berhasil diubah.');
+  const handleToggleDepartmentStatus = async (deptId: string) => {
+    try {
+      await ticketApiService.toggleDepartmentStatus(deptId);
+      addToast('info', 'Status Departemen', 'Status keaktifan departemen berhasil diubah.');
+      await loadAppData();
+    } catch (err: any) {
+      addToast('error', 'Gagal Mengubah Status', err.message || 'Gagal mengubah status.');
+    }
   };
 
   // 12. Admin Category Management CRUD
-  const handleSaveCategory = (catData: {
+  const handleSaveCategory = async (catData: {
     id?: string;
     name: string;
     subcategories: string[];
     active: boolean;
   }) => {
-    if (catData.id) {
-      setCategories((prev) =>
-        prev.map((c) => (c.id === catData.id ? { ...c, ...catData } : c))
-      );
-      addToast('success', 'Kategori Diperbarui', `Kategori ${catData.name} berhasil diubah.`);
-    } else {
-      const newCat: CategoryInfo = {
-        id: `cat-${Date.now()}`,
+    try {
+      await ticketApiService.saveCategory({
+        id: catData.id && !catData.id.startsWith('cat-temp') ? Number(catData.id) : undefined,
         name: catData.name,
+        is_active: catData.active,
         subcategories: catData.subcategories,
-        active: catData.active,
-      };
-      setCategories((prev) => [...prev, newCat]);
-      addToast('success', 'Kategori Dibuat', `Kategori baru ${catData.name} berhasil dibuat.`);
+      });
+      addToast('success', 'Kategori Disimpan', `Kategori ${catData.name} berhasil disimpan.`);
+      await loadAppData();
+    } catch (err: any) {
+      addToast('error', 'Gagal Menyimpan Kategori', err.message || 'Kategori gagal disimpan.');
     }
   };
 
-  const handleToggleCategoryStatus = (catId: string) => {
-    setCategories((prev) =>
-      prev.map((c) => (c.id === catId ? { ...c, active: c.active === false ? true : false } : c))
-    );
-    addToast('info', 'Status Kategori', 'Status keaktifan kategori berhasil diubah.');
+  const handleToggleCategoryStatus = async (catId: string) => {
+    try {
+      await ticketApiService.toggleCategoryStatus(catId);
+      addToast('info', 'Status Kategori', 'Status keaktifan kategori berhasil diubah.');
+      await loadAppData();
+    } catch (err: any) {
+      addToast('error', 'Gagal Mengubah Status', err.message || 'Gagal mengubah status.');
+    }
   };
 
   // 13. Admin SLA Policies Update
-  const handleSaveSLAPolicies = (updatedPolicies: SLAPolicyItem[]) => {
-    setSlaPolicies(updatedPolicies);
-    addToast('success', 'Kebijakan SLA Disimpan', 'Target SLA berhasil disinkronkan ke seluruh sistem.');
+  const handleSaveSLAPolicies = async (updatedPolicies: SLAPolicyItem[]) => {
+    try {
+      await ticketApiService.saveSlaPolicies(
+        updatedPolicies.map((p) => ({
+          priority: p.priority,
+          response_target_minutes: p.responseTargetMinutes,
+          resolution_target_hours: p.resolutionTargetHours,
+          description: p.description,
+        }))
+      );
+      addToast('success', 'Kebijakan SLA Disimpan', 'Target SLA berhasil disinkronkan ke seluruh sistem.');
+      await loadAppData();
+    } catch (err: any) {
+      addToast('error', 'Gagal Menyimpan SLA', err.message || 'Gagal menyimpan target SLA.');
+    }
   };
 
   // Notifications Handlers
-  const handleMarkNotificationAsRead = (id: string) => {
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
-    );
+  const handleMarkNotificationAsRead = async (id: string) => {
+    try {
+      await ticketApiService.markNotificationRead(id);
+      setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, isRead: true } : n)));
+    } catch {
+      // fallback local
+      setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, isRead: true } : n)));
+    }
   };
 
-  const handleMarkAllNotificationsAsRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
-    addToast('info', 'Notifikasi Dibaca', 'Semua notifikasi telah ditandai sebagai dibaca.');
+  const handleMarkAllNotificationsAsRead = async () => {
+    try {
+      await ticketApiService.markAllNotificationsRead();
+      setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+      addToast('info', 'Notifikasi Dibaca', 'Semua notifikasi telah ditandai sebagai dibaca.');
+    } catch {
+      setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+    }
   };
 
   const handleSelectNotification = (notif: NotificationItem) => {
@@ -910,6 +623,20 @@ export default function Home() {
       setSelectedTicketId(notif.ticketId);
     }
   };
+
+  // Initializing Splash Screen
+  if (isInitializing) {
+    return (
+      <main className="min-h-screen flex items-center justify-center bg-zinc-950 text-zinc-100">
+        <div className="flex flex-col items-center gap-3">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-xl shadow-blue-600/30 animate-pulse">
+            <LifeBuoy className="h-6 w-6" />
+          </div>
+          <p className="text-xs font-semibold tracking-wider text-zinc-400">Memuat Sesi PlisHelp...</p>
+        </div>
+      </main>
+    );
+  }
 
   // ==========================================
   // VIEW RENDER LOGIC
@@ -1020,17 +747,25 @@ export default function Home() {
 
             <button
               type="submit"
-              className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 via-blue-500 to-indigo-600 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-600/25 hover:from-blue-500 hover:to-indigo-500 active:scale-[0.99] transition-all"
+              disabled={isLoggingIn}
+              className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 via-blue-500 to-indigo-600 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-600/25 hover:from-blue-500 hover:to-indigo-500 active:scale-[0.99] disabled:opacity-60 transition-all"
             >
-              <span>Masuk sebagai {selectedRole}</span>
-              <ChevronRight className="h-4 w-4" />
+              {isLoggingIn ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>Memverifikasi...</span>
+                </>
+              ) : (
+                <>
+                  <span>Masuk sebagai {selectedRole}</span>
+                  <ChevronRight className="h-4 w-4" />
+                </>
+              )}
             </button>
           </form>
 
           <p className="text-[11px] text-zinc-500 text-center leading-relaxed">
-            Employee: <code className="text-zinc-400">employee123</code> · Support:{' '}
-            <code className="text-zinc-400">support123</code> · Admin:{' '}
-            <code className="text-zinc-400">admin123</code>
+            Password akun demo seeder: <code className="text-zinc-400 font-mono">password123</code>
           </p>
         </section>
       </main>

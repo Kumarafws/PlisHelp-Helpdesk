@@ -17,12 +17,9 @@ class TicketActivity extends Model
         'metadata',
     ];
 
-    protected function casts(): array
-    {
-        return [
-            'metadata' => 'array', // Maps cleanly to PostgreSQL JSONB
-        ];
-    }
+    protected $casts = [
+        'metadata' => 'array',
+    ];
 
     public function ticket(): BelongsTo
     {

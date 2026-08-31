@@ -1,20 +1,21 @@
 {
   "name": "plishelp/backend",
   "type": "project",
-  "description": "PlisHelp Internal IT Helpdesk RESTful API Backend (Laravel 13 + PostgreSQL + Eloquent ORM)",
+  "description": "PlisHelp Internal IT Helpdesk RESTful API Backend",
   "keywords": ["framework", "laravel", "helpdesk", "postgresql", "eloquent"],
   "license": "MIT",
   "require": {
-    "php": "^8.2|^8.3|^8.4",
-    "laravel/framework": "^13.0",
-    "laravel/sanctum": "^4.0"
+    "php": "^8.1",
+    "guzzlehttp/guzzle": "^7.2",
+    "laravel/framework": "^10.0",
+    "laravel/sanctum": "^3.3",
+    "laravel/tinker": "^2.8"
   },
   "require-dev": {
     "fakerphp/faker": "^1.23",
-    "laravel/pint": "^1.18",
     "mockery/mockery": "^1.6",
-    "nunomaduro/collision": "^8.4",
-    "phpunit/phpunit": "^11.3"
+    "nunomaduro/collision": "^7.0",
+    "phpunit/phpunit": "^10.0"
   },
   "autoload": {
     "psr-4": {
@@ -30,13 +31,18 @@
   },
   "scripts": {
     "post-autoload-dump": [
+      "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",
       "@php artisan package:discover --ansi"
     ]
   },
   "config": {
     "optimize-autoloader": true,
     "preferred-install": "dist",
-    "sort-packages": true
+    "sort-packages": true,
+    "allow-plugins": {
+      "pestphp/pest-plugin": true,
+      "php-http/discovery": true
+    }
   },
   "minimum-stability": "stable",
   "prefer-stable": true

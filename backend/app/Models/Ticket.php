@@ -36,17 +36,14 @@ class Ticket extends Model
         'escalation_reason',
     ];
 
-    protected function casts(): array
-    {
-        return [
-            'sla_due_at' => 'datetime',
-            'first_response_at' => 'datetime',
-            'resolved_at' => 'datetime',
-            'closed_at' => 'datetime',
-            'sla_response_minutes' => 'integer',
-            'sla_resolution_hours' => 'integer',
-        ];
-    }
+    protected $casts = [
+        'sla_due_at' => 'datetime',
+        'first_response_at' => 'datetime',
+        'resolved_at' => 'datetime',
+        'closed_at' => 'datetime',
+        'sla_response_minutes' => 'integer',
+        'sla_resolution_hours' => 'integer',
+    ];
 
     // Relations
     public function requester(): BelongsTo
