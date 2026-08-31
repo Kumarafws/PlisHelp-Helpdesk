@@ -3,7 +3,6 @@ import { Ticket, TicketPriority, TicketStatus, TicketType } from '@/types/helpde
 import { StatusBadge } from '../StatusBadge';
 import { PriorityBadge } from '../PriorityBadge';
 import { EmptyState } from '../EmptyState';
-import { CATEGORIES_DATA } from '@/services/mockTicketService';
 import {
   Search,
   Filter,
@@ -252,9 +251,9 @@ export const MyTicketsView: React.FC<MyTicketsViewProps> = ({
               className="w-full rounded-lg border border-zinc-700 bg-zinc-850 px-2.5 py-1.5 text-xs text-zinc-200 focus:border-blue-500 focus:outline-none"
             >
               <option value="ALL">Semua Kategori</option>
-              {CATEGORIES_DATA.map((cat) => (
-                <option key={cat.id} value={cat.name}>
-                  {cat.name}
+              {Array.from(new Set(tickets.map((t) => t.category).filter(Boolean))).map((catName) => (
+                <option key={catName} value={catName}>
+                  {catName}
                 </option>
               ))}
             </select>

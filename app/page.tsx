@@ -14,16 +14,10 @@ import {
   SLAPolicyItem,
 } from '@/types/helpdesk';
 import {
-  INITIAL_TICKETS,
-  INITIAL_NOTIFICATIONS,
-  INITIAL_USERS,
-  INITIAL_DEPARTMENTS,
-  CATEGORIES_DATA,
-  INITIAL_SLA_POLICIES,
   computeSummary,
   computeSupportSummary,
   computeAdminSummary,
-} from '@/services/mockTicketService';
+} from '@/services/ticketServiceUtils';
 import { ticketApiService } from '@/services/ticketApiService';
 import { tokenStorage, ApiError } from '@/lib/apiClient';
 
@@ -106,12 +100,12 @@ export default function Home() {
   const [isInitializing, setIsInitializing] = useState(true);
 
   // Core Data State (Synced with Backend API)
-  const [tickets, setTickets] = useState<Ticket[]>(INITIAL_TICKETS);
-  const [notifications, setNotifications] = useState<NotificationItem[]>(INITIAL_NOTIFICATIONS);
-  const [users, setUsers] = useState<ManagedUser[]>(INITIAL_USERS);
-  const [departments, setDepartments] = useState<DepartmentInfo[]>(INITIAL_DEPARTMENTS);
-  const [categories, setCategories] = useState<CategoryInfo[]>(CATEGORIES_DATA);
-  const [slaPolicies, setSlaPolicies] = useState<SLAPolicyItem[]>(INITIAL_SLA_POLICIES);
+  const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [users, setUsers] = useState<ManagedUser[]>([]);
+  const [departments, setDepartments] = useState<DepartmentInfo[]>([]);
+  const [categories, setCategories] = useState<CategoryInfo[]>([]);
+  const [slaPolicies, setSlaPolicies] = useState<SLAPolicyItem[]>([]);
 
   // Navigation States
   const [activeTab, setActiveTab] = useState<
@@ -763,10 +757,6 @@ export default function Home() {
               )}
             </button>
           </form>
-
-          <p className="text-[11px] text-zinc-500 text-center leading-relaxed">
-            Password akun demo seeder: <code className="text-zinc-400 font-mono">password123</code>
-          </p>
         </section>
       </main>
     );

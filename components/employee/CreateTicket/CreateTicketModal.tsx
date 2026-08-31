@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { CategoryInfo, TicketPriority, TicketType, TicketAttachment } from '@/types/helpdesk';
-import { CATEGORIES_DATA } from '@/services/mockTicketService';
 import { 
   X, 
   Upload, 
@@ -31,12 +30,17 @@ interface CreateTicketModalProps {
 
 export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
   isOpen,
-  categories = CATEGORIES_DATA,
+  categories = [],
   onClose,
   onSubmit,
 }) => {
   const activeCategories = categories.filter((c) => c.active !== false);
-  const defaultCategory = activeCategories[0] || CATEGORIES_DATA[0];
+  const defaultCategory = activeCategories[0] || {
+    id: '1',
+    name: 'Hardware & Devices',
+    subcategories: ['Laptop / Komputer', 'Monitor & Display', 'Printer & Scanner'],
+    active: true,
+  };
 
   const [ticketType, setTicketType] = useState<TicketType>('Incident');
   const [selectedCategory, setSelectedCategory] = useState<string>(defaultCategory.name);

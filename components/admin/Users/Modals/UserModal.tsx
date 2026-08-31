@@ -37,14 +37,14 @@ export const UserModal: React.FC<UserModalProps> = ({
     if (userToEdit) {
       setName(userToEdit.name);
       setEmail(userToEdit.email);
-      setPassword(''); // Kosongkan saat edit kecuali admin ingin reset password
+      setPassword(''); // Kosong saat edit akun
       setRole(userToEdit.role);
       setDepartment(userToEdit.department);
       setStatus(userToEdit.status);
     } else {
       setName('');
       setEmail('');
-      setPassword('password123'); // Nilai bawaan default untuk user baru
+      setPassword(''); // Kosong saat buat akun baru (bebas ditentukan admin)
       setRole('Employee');
       setDepartment(departments[0]?.name || 'Marketing & Communications');
       setStatus('ACTIVE');
@@ -68,13 +68,17 @@ export const UserModal: React.FC<UserModalProps> = ({
 
     // Validasi Password
     if (!userToEdit) {
-      // Saat buat user baru
-      if (password && password.length < 6) {
+      // Saat buat user baru, password wajib diisi
+      if (!password.trim()) {
+        setError('Password akun wajib diisi untuk pengguna baru.');
+        return;
+      }
+      if (password.trim().length < 6) {
         setError('Password minimal 6 karakter.');
         return;
       }
     } else {
-      // Saat edit user (opsional jika diisi untuk reset)
+      // Saat edit user (opsional hanya jika ingin reset)
       if (password.trim() && password.trim().length < 6) {
         setError('Password baru minimal 6 karakter.');
         return;
@@ -145,7 +149,7 @@ export const UserModal: React.FC<UserModalProps> = ({
             />
           </div>
 
-          {/* Password Field (Custom Creation & Reset Password on Edit) */}
+          {/* Password Field */}
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400">
@@ -161,7 +165,7 @@ export const UserModal: React.FC<UserModalProps> = ({
                 )}
               </label>
               {userToEdit && (
-                <span className="text-[11px] text-zinc-500">Opsional (hanya diisi jika reset)</span>
+                <span className="text-[11px] text-zinc-500">Opsional (hanya diisi jika ingin mereset)</span>
               )}
             </div>
 
@@ -173,8 +177,8 @@ export const UserModal: React.FC<UserModalProps> = ({
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder={
                   userToEdit
-                    ? 'Kosongkan jika tidak ingin mengubah password'
-                    : 'Ketik password khusus (min. 6 karakter)'
+                    ? 'Kosongkan jika tidak ingin mengubah password user'
+                    : 'Ketik password akun baru (minimal 6 karakter)...'
                 }
                 className="w-full rounded-xl border border-zinc-700 bg-zinc-850 pl-10 pr-10 py-3 text-xs sm:text-sm text-zinc-100 placeholder-zinc-500 focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
                 required={!userToEdit}
@@ -190,8 +194,8 @@ export const UserModal: React.FC<UserModalProps> = ({
 
             <p className="mt-1 text-[11px] text-zinc-400">
               {userToEdit
-                ? '💡 Masukkan password baru di atas apabila user lupa password untuk mereset kata sandi akunnya.'
-                : '💡 Anda dapat memasukkan password custom untuk pengguna baru ini (minimal 6 karakter).'}
+                ? '💡 Masukkan kata sandi baru untuk mereset akun ini jika user lupa password.'
+                : '💡 Tentukan password untuk akun baru ini (minimal 6 karakter).'}
             </p>
           </div>
 

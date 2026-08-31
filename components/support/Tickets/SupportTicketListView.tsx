@@ -5,7 +5,6 @@ import { PriorityBadge } from '@/components/employee/PriorityBadge';
 import { SLABadge } from '../SLABadge';
 import { EmptyState } from '@/components/employee/EmptyState';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import { CATEGORIES_DATA } from '@/services/mockTicketService';
 import {
   Search,
   RotateCcw,
@@ -329,9 +328,9 @@ export const SupportTicketListView: React.FC<SupportTicketListViewProps> = ({
               className="w-full rounded-lg border border-zinc-700 bg-zinc-850 px-2.5 py-1.5 text-xs text-zinc-200 focus:border-indigo-500 focus:outline-none"
             >
               <option value="ALL">Semua Kategori</option>
-              {CATEGORIES_DATA.map((cat) => (
-                <option key={cat.id} value={cat.name}>
-                  {cat.name}
+              {Array.from(new Set(tickets.map((t) => t.category).filter(Boolean))).map((catName) => (
+                <option key={catName} value={catName}>
+                  {catName}
                 </option>
               ))}
             </select>
