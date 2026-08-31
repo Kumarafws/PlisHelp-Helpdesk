@@ -24,6 +24,7 @@ interface AdminUsersViewProps {
     id?: string;
     name: string;
     email: string;
+    password?: string;
     role: TicketRole;
     department: string;
     status: 'ACTIVE' | 'INACTIVE';

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ManagedUser, TicketRole, DepartmentInfo } from '@/types/helpdesk';
-import { X, UserPlus, Save, AlertCircle } from 'lucide-react';
+import { X, UserPlus, Save, AlertCircle, Lock, Eye, EyeOff, KeyRound } from 'lucide-react';
 
 interface UserModalProps {
   isOpen: boolean;
@@ -10,6 +10,7 @@ interface UserModalProps {
   onSubmit: (userData: {
     name: string;
     email: string;
+    password?: string;
     role: TicketRole;
     department: string;
     status: 'ACTIVE' | 'INACTIVE';
@@ -25,6 +26,8 @@ export const UserModal: React.FC<UserModalProps> = ({
 }) => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [role, setRole] = useState<TicketRole>('Employee');
   const [department, setDepartment] = useState(departments[0]?.name || 'Marketing & Communications');
   const [status, setStatus] = useState<'ACTIVE' | 'INACTIVE'>('ACTIVE');
@@ -34,16 +37,19 @@ export const UserModal: React.FC<UserModalProps> = ({
     if (userToEdit) {
       setName(userToEdit.name);
       setEmail(userToEdit.email);
+      setPassword(''); // Kosongkan saat edit kecuali admin ingin reset password
       setRole(userToEdit.role);
       setDepartment(userToEdit.department);
       setStatus(userToEdit.status);
     } else {
       setName('');
       setEmail('');
+      setPassword('password123'); // Nilai bawaan default untuk user baru
       setRole('Employee');
       setDepartment(departments[0]?.name || 'Marketing & Communications');
       setStatus('ACTIVE');
     }
+    setShowPassword(false);
     setError('');
   }, [userToEdit, isOpen, departments]);
 
@@ -60,9 +66,25 @@ export const UserModal: React.FC<UserModalProps> = ({
       return;
     }
 
+    // Validasi Password
+    if (!userToEdit) {
+      // Saat buat user baru
+      if (password && password.length < 6) {
+        setError('Password minimal 6 karakter.');
+        return;
+      }
+    } else {
+      // Saat edit user (opsional jika diisi untuk reset)
+      if (password.trim() && password.trim().length < 6) {
+        setError('Password baru minimal 6 karakter.');
+        return;
+      }
+    }
+
     onSubmit({
       name: name.trim(),
       email: email.trim(),
+      password: password.trim() ? password.trim() : undefined,
       role,
       department,
       status,
@@ -82,7 +104,7 @@ export const UserModal: React.FC<UserModalProps> = ({
               <h3 className="text-base font-bold text-white">
                 {userToEdit ? 'Edit Akun Pengguna' : 'Tambah Pengguna Baru'}
               </h3>
-              <p className="text-xs text-zinc-400">Atur hak akses, unit kerja, dan status akun</p>
+              <p className="text-xs text-zinc-400">Atur hak akses, kredensial password, dan status akun</p>
             </div>
           </div>
           <button
@@ -121,6 +143,56 @@ export const UserModal: React.FC<UserModalProps> = ({
               className="w-full rounded-xl border border-zinc-700 bg-zinc-850 p-3 text-xs sm:text-sm text-zinc-100 placeholder-zinc-500 focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
               required
             />
+          </div>
+
+          {/* Password Field (Custom Creation & Reset Password on Edit) */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400">
+                {userToEdit ? (
+                  <span className="flex items-center gap-1.5">
+                    <KeyRound className="h-3.5 w-3.5 text-purple-400" />
+                    Reset Password Pengguna
+                  </span>
+                ) : (
+                  <span>
+                    Password Akun <span className="text-rose-400">*</span>
+                  </span>
+                )}
+              </label>
+              {userToEdit && (
+                <span className="text-[11px] text-zinc-500">Opsional (hanya diisi jika reset)</span>
+              )}
+            </div>
+
+            <div className="relative">
+              <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
+              <input
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder={
+                  userToEdit
+                    ? 'Kosongkan jika tidak ingin mengubah password'
+                    : 'Ketik password khusus (min. 6 karakter)'
+                }
+                className="w-full rounded-xl border border-zinc-700 bg-zinc-850 pl-10 pr-10 py-3 text-xs sm:text-sm text-zinc-100 placeholder-zinc-500 focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                required={!userToEdit}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 focus:outline-none"
+              >
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+
+            <p className="mt-1 text-[11px] text-zinc-400">
+              {userToEdit
+                ? '💡 Masukkan password baru di atas apabila user lupa password untuk mereset kata sandi akunnya.'
+                : '💡 Anda dapat memasukkan password custom untuk pengguna baru ini (minimal 6 karakter).'}
+            </p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -172,9 +244,9 @@ export const UserModal: React.FC<UserModalProps> = ({
           </div>
 
           {error && (
-            <p className="text-xs text-rose-400 flex items-center gap-1">
-              <AlertCircle className="h-3.5 w-3.5" />
-              {error}
+            <p className="text-xs text-rose-400 flex items-center gap-1 bg-rose-500/10 p-2.5 rounded-lg border border-rose-500/20">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              <span>{error}</span>
             </p>
           )}
 
